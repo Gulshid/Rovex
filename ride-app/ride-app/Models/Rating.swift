@@ -9,7 +9,6 @@
 
 import Foundation
 import FirebaseFirestore
-import FirebaseFirestoreSwift
 
 struct Rating: Codable, Identifiable, Equatable {
     @DocumentID var id: String?

@@ -13,7 +13,6 @@
 
 import Foundation
 import FirebaseFirestore
-import FirebaseFirestoreSwift
 
 enum VehicleType: String, Codable, CaseIterable {
     case economy

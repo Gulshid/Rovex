@@ -9,7 +9,6 @@
 
 import Foundation
 import FirebaseFirestore
-import FirebaseFirestoreSwift
 
 struct VehicleInfo: Codable, Equatable {
     var model: String
@@ -18,12 +17,6 @@ struct VehicleInfo: Codable, Equatable {
     var seats: Int
     var vehicleType: VehicleType = .economy
     var vehiclePhotoURL: String?     // set by Cloudinary upload (Phase 5)
-}
-
-enum VehicleType: String, Codable, CaseIterable {
-    case economy
-    case comfort
-    case xl
 }
 
 struct Driver: Codable, Identifiable, Equatable {

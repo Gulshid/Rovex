@@ -16,7 +16,6 @@
 
 import Foundation
 import FirebaseFirestore
-import FirebaseFirestoreSwift
 
 enum UserRole: String, Codable {
     case rider

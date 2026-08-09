@@ -78,7 +78,7 @@ final class AuthService {
                 createdAt: Date()
             )
 
-            try db.collection(Constants.Firestore.usersCollection)
+            try await db.collection(Constants.Firestore.usersCollection)
                 .document(uid)
                 .setData(from: newUser)
 
