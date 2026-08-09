@@ -2,51 +2,45 @@
 //  User.swift
 //  RideBookingApp
 //
-//  Phase 2/3 — Codable models backing the `users` Firestore collection.
-//  Full schema documentation arrives in Phase 4; this is the working subset
-//  needed for Auth (Phase 2) and Profile/Vehicle onboarding (Phase 3).
+//  Phase 4 - Firestore Data Modeling
+//  Matches the `users` collection.
 //
 
 import Foundation
 import FirebaseFirestore
+import FirebaseFirestoreSwift
 
-enum UserRole: String, Codable, CaseIterable, Hashable {
+enum UserRole: String, Codable {
     case rider
     case driver
 }
 
-struct VehicleDetails: Codable, Equatable, Hashable {
-    var model: String
-    var plateNumber: String
-    var color: String
-    var seats: Int
-    var licenseURL: String?
-    var vehiclePhotoURL: String?
-}
-
-/// Matches a document in the `users` Firestore collection.
-struct AppUser: Identifiable, Codable, Equatable {
-    @DocumentID var id: String?
+struct User: Codable, Identifiable, Equatable {
+    @DocumentID var id: String?          // Firestore doc id == Firebase Auth uid
     var name: String
     var email: String
-    var role: UserRole
     var phone: String?
-    var photoURL: String?
-    /// Drivers only — toggled online/offline starting Phase 8.
-    var isAvailable: Bool?
-    /// Drivers only — filled in during Phase 3 vehicle onboarding.
-    var vehicle: VehicleDetails?
-    var createdAt: Date
+    var role: UserRole
+    var photoURL: String?                // set by Cloudinary upload (Phase 5)
+    @ServerTimestamp var createdAt: Timestamp?
+
+    // Optional convenience fields used later in the roadmap
+    var homeAddress: String?             // Phase 14 - favorite locations
+    var workAddress: String?             // Phase 14 - favorite locations
+    var walletBalance: Double?           // Phase 10 - optional in-app wallet
+    var fcmToken: String?                // Phase 11 - push notifications
 
     enum CodingKeys: String, CodingKey {
         case id
         case name
         case email
-        case role
         case phone
+        case role
         case photoURL
-        case isAvailable
-        case vehicle
         case createdAt
+        case homeAddress
+        case workAddress
+        case walletBalance
+        case fcmToken
     }
 }
