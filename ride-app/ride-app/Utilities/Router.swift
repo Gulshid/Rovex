@@ -3,15 +3,16 @@
 //  RideBookingApp
 //
 //  Phase 1 — Lightweight Router/Coordinator built on NavigationStack.
-//  Add new cases to `AppRoute` as new screens are built in later phases.
+//  Phase 2/3 — Added Auth and Profile routes and wired them to real views.
 //
 
 import SwiftUI
 
 enum AppRoute: Hashable {
     case login
-    case signUp
+    case forgotPassword
     case roleSelection
+    case signUp(role: UserRole)
     case profile
     case editProfile
     case bookRide
@@ -38,22 +39,22 @@ final class Router: ObservableObject {
         path.removeLast(path.count)
     }
 
-    /// Maps a route to its destination view.
-    /// Views referenced here are stubbed as later phases build them out —
-    /// for now only Home exists (Phase 1), so this switch will grow phase by phase.
+    /// Maps a route to its destination view. Grows phase by phase.
     @ViewBuilder
     func destination(for route: AppRoute) -> some View {
         switch route {
         case .login:
-            Text("Login — build in Phase 2")
-        case .signUp:
-            Text("Sign Up — build in Phase 2")
+            LoginView()
+        case .forgotPassword:
+            ForgotPasswordView()
         case .roleSelection:
-            Text("Role Selection — build in Phase 2")
+            RoleSelectionView()
+        case .signUp(let role):
+            SignUpView(role: role)
         case .profile:
-            Text("Profile — build in Phase 3")
+            ProfileView()
         case .editProfile:
-            Text("Edit Profile — build in Phase 3")
+            EditProfileView()
         case .bookRide:
             Text("Book Ride — build in Phase 7")
         case .rideTracking(let rideId):

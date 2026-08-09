@@ -2,9 +2,8 @@
 //  RootView.swift
 //  RideBookingApp
 //
-//  Phase 1 — Placeholder root screen.
-//  From Phase 2 onward, this will branch between Auth flow and Home flow
-//  based on `sessionManager.isLoggedIn`.
+//  Phase 2 — Branches between Splash / Auth flow / Home flow based on
+//  `sessionManager` state, restoring session automatically on relaunch.
 //
 
 import SwiftUI
@@ -15,12 +14,26 @@ struct RootView: View {
     @EnvironmentObject var router: Router
 
     var body: some View {
-        NavigationStack(path: $router.path) {
-            HomeView()
-                .navigationDestination(for: AppRoute.self) { route in
-                    router.destination(for: route)
+        Group {
+            if sessionManager.isLoadingAuthState {
+                SplashView()
+            } else if sessionManager.isLoggedIn {
+                NavigationStack(path: $router.path) {
+                    HomeView()
+                        .navigationDestination(for: AppRoute.self) { route in
+                            router.destination(for: route)
+                        }
                 }
+            } else {
+                NavigationStack(path: $router.path) {
+                    LoginView()
+                        .navigationDestination(for: AppRoute.self) { route in
+                            router.destination(for: route)
+                        }
+                }
+            }
         }
+        .animation(.default, value: sessionManager.isLoggedIn)
     }
 }
 

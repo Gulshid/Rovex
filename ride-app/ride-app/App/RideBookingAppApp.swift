@@ -2,13 +2,11 @@
 //  RideBookingAppApp.swift
 //  RideBookingApp
 //
-//  Phase 1 — App entry point.
-//  Once you add the Firebase SDK via Swift Package Manager (Phase 2),
-//  uncomment the `import FirebaseCore` line and the `FirebaseApp.configure()` call.
+//  Phase 2 — App entry point. Firebase is now configured on launch.
 //
 
 import SwiftUI
-// import FirebaseCore
+import FirebaseCore
 
 @main
 struct RideBookingAppApp: App {
@@ -18,7 +16,7 @@ struct RideBookingAppApp: App {
     @StateObject private var router = Router()
 
     init() {
-        // FirebaseApp.configure()   // <-- uncomment in Phase 2 after adding GoogleService-Info.plist
+        FirebaseApp.configure()
         print("✅ RideBookingApp launched — environment: \(AppEnvironment.current)")
     }
 
