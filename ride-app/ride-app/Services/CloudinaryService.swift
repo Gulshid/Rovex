@@ -8,6 +8,10 @@
 //  the resulting secure_url. Only the URL is ever written to Firestore;
 //  Cloudinary itself stores the binary image.
 //
+//  UPDATED - reads cloudName/uploadPreset from Constants.Cloudinary
+//  (Utilities/Constants.swift, filled in during Phase 0) instead of a
+//  second hardcoded copy, so there's one source of truth.
+//
 
 import Foundation
 import UIKit
@@ -36,17 +40,12 @@ enum CloudinaryError: LocalizedError {
 }
 
 /// Wraps Cloudinary's unsigned upload endpoint.
-/// Fill in your own Cloud Name + Upload Preset from the Cloudinary console (Phase 0).
 final class CloudinaryService {
 
     static let shared = CloudinaryService()
 
-    // TODO: replace with your actual values from the Cloudinary console
-    private let cloudName = "df0saqabg"
-    private let uploadPreset = "rovex_unsigned"
-
     private var uploadURL: URL {
-        URL(string: "https://api.cloudinary.com/v1_1/\(cloudName)/image/upload")!
+        URL(string: Constants.Cloudinary.uploadURL)!
     }
 
     private init() {}
@@ -85,7 +84,7 @@ final class CloudinaryService {
             body.append("\(value)\r\n".data(using: .utf8)!)
         }
 
-        appendFormField(name: "upload_preset", value: uploadPreset)
+        appendFormField(name: "upload_preset", value: Constants.Cloudinary.uploadPreset)
         if !folder.isEmpty {
             appendFormField(name: "folder", value: folder)
         }

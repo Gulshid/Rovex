@@ -7,6 +7,11 @@
 //  persisted together with the rest of the profile when the parent
 //  EditProfileView is saved.
 //
+//  UPDATED in Phase 5 — the license photo picker used to store its
+//  picked image in local @State, so it was never actually included in
+//  the save. It now writes into viewModel.licensePhotoData, which
+//  ProfileViewModel.saveProfile() uploads to Cloudinary and persists.
+//
 
 import SwiftUI
 import PhotosUI
@@ -16,7 +21,6 @@ struct VehicleDetailsView: View {
     @ObservedObject var viewModel: ProfileViewModel
 
     @State private var licensePhotoItem: PhotosPickerItem?
-    @State private var licensePhotoData: Data?
 
     var body: some View {
         Form {
@@ -30,7 +34,7 @@ struct VehicleDetailsView: View {
             Section("License Photo") {
                 PhotosPicker(selection: $licensePhotoItem, matching: .images) {
                     HStack {
-                        if let data = licensePhotoData, let uiImage = UIImage(data: data) {
+                        if let data = viewModel.licensePhotoData, let uiImage = UIImage(data: data) {
                             Image(uiImage: uiImage)
                                 .resizable()
                                 .scaledToFill()
@@ -44,16 +48,17 @@ struct VehicleDetailsView: View {
                         Text("Upload license photo")
                     }
                 }
-                Text("Photo uploads to Cloudinary in Phase 5 — for now it's stored locally as a preview.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+
+                if case .uploading(let progress) = viewModel.licenseUploadState {
+                    ProgressView(value: progress)
+                }
             }
         }
         .navigationTitle("Vehicle Details")
         .onChange(of: licensePhotoItem) { _, newItem in
             Task {
                 if let data = try? await newItem?.loadTransferable(type: Data.self) {
-                    licensePhotoData = data
+                    viewModel.licensePhotoData = data
                 }
             }
         }

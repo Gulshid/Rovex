@@ -2,12 +2,12 @@
 //  UserService.swift
 //  RideBookingApp
 //
-//  UPDATED in Phase 5.
-//  Phase 3 already has profile read/update logic — this adds the
-//  Cloudinary-URL-specific writes for profile photo, vehicle photo,
-//  and license photo. Merge these methods into your existing
-//  UserService.swift instead of overwriting it, if you already
-//  have other methods (fetchUser, updateProfile, etc.) in there.
+//  Phase 3 — fetch/update the current user's Firestore document.
+//  UPDATED in Phase 5 — added Cloudinary-URL-specific writes for
+//  profile photo, vehicle photo, and license photo. Everything lives
+//  on the single `users` document (see AppUser in Models/User.swift) —
+//  there is no separate `drivers` collection, so vehicle fields are
+//  written with dotted field paths onto the same doc.
 //
 
 import Foundation
@@ -20,39 +20,35 @@ final class UserService {
 
     private init() {}
 
-    // MARK: - Existing from Phase 3 (kept here for reference/context)
-
-    func fetchUser(uid: String) async throws -> User {
-        let snapshot = try await db.collection("users").document(uid).getDocument()
-        return try snapshot.data(as: User.self)
+    func fetchUser(uid: String) async throws -> AppUser {
+        let snapshot = try await db.collection(Constants.Firestore.usersCollection)
+            .document(uid)
+            .getDocument()
+        return try snapshot.data(as: AppUser.self)
     }
 
     func updateProfileFields(uid: String, fields: [String: Any]) async throws {
-        try await db.collection("users").document(uid).updateData(fields)
+        try await db.collection(Constants.Firestore.usersCollection)
+            .document(uid)
+            .updateData(fields)
     }
 
-    // MARK: - New in Phase 5
+    // MARK: - Phase 5
 
     /// Saves the Cloudinary secure_url for a rider/driver's profile photo.
     func updateProfilePhotoURL(uid: String, url: String) async throws {
-        try await db.collection("users").document(uid).updateData([
-            "photoURL": url
-        ])
-    }
-
-    /// Saves the Cloudinary secure_url for a driver's license document photo.
-    /// Lives on the `drivers` collection (see Driver.swift, Phase 4).
-    func updateDriverLicenseURL(uid: String, url: String) async throws {
-        try await db.collection("drivers").document(uid).updateData([
-            "licenseURL": url
-        ])
+        try await updateProfileFields(uid: uid, fields: ["photoURL": url])
     }
 
     /// Saves the Cloudinary secure_url for a driver's vehicle photo.
-    /// Nested under the `vehicle` map on the driver doc (see VehicleInfo in Driver.swift).
+    /// Nested under `vehicle.vehiclePhotoURL` on the user doc.
     func updateVehiclePhotoURL(uid: String, url: String) async throws {
-        try await db.collection("drivers").document(uid).updateData([
-            "vehicle.vehiclePhotoURL": url
-        ])
+        try await updateProfileFields(uid: uid, fields: ["vehicle.vehiclePhotoURL": url])
+    }
+
+    /// Saves the Cloudinary secure_url for a driver's license document photo.
+    /// Nested under `vehicle.licenseURL` on the user doc.
+    func updateDriverLicenseURL(uid: String, url: String) async throws {
+        try await updateProfileFields(uid: uid, fields: ["vehicle.licenseURL": url])
     }
 }

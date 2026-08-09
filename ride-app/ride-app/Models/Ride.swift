@@ -5,10 +5,21 @@
 //  Phase 4 - Firestore Data Modeling
 //  Matches the `rides` collection.
 //
+//  UPDATED - VehicleType now lives here (was previously defined in a
+//  separate Driver.swift that duplicated the app's actual user model —
+//  removed). AppUser.vehicle.vehicleType (Models/User.swift) references
+//  this same enum.
+//
 
 import Foundation
 import FirebaseFirestore
 import FirebaseFirestoreSwift
+
+enum VehicleType: String, Codable, CaseIterable {
+    case economy
+    case comfort
+    case xl
+}
 
 enum RideStatus: String, Codable {
     case requested

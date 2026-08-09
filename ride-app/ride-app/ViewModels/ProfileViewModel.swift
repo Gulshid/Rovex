@@ -2,12 +2,15 @@
 //  ProfileViewModel.swift
 //  RideBookingApp
 //
-//  UPDATED in Phase 5.
-//  Phase 3 already has this ViewModel with name/phone/email bindings —
-//  this adds the actual image-upload wiring that Phase 3 left as a TODO
-//  ("upload handled in Phase 5"). Merge into your existing
-//  ProfileViewModel.swift rather than overwriting if you already have
-//  other properties/methods there.
+//  Phase 3 — Backs EditProfileView (name/phone/photo) and
+//  VehicleDetailsView (driver vehicle fields + license photo). Both
+//  views share a single instance of this ViewModel, which is why
+//  vehicle fields live here rather than in a separate ViewModel.
+//
+//  UPDATED in Phase 5 — saveProfile() now actually uploads any picked
+//  profile photo / license photo to Cloudinary before writing the
+//  resulting URLs to Firestore, closing the "upload handled in Phase 5"
+//  TODO left by Phase 3.
 //
 
 import Foundation
@@ -17,36 +20,73 @@ import PhotosUI
 @MainActor
 final class ProfileViewModel: ObservableObject {
 
-    // MARK: - Existing from Phase 3 (kept for context)
-    @Published var user: User?
+    // MARK: - Personal info (EditProfileView)
     @Published var name: String = ""
     @Published var phone: String = ""
+    @Published var photoURL: String?
 
-    // MARK: - New in Phase 5 - image upload state
-    @Published var profilePhotoUploadState: CloudinaryUploadState = .idle
+    // MARK: - Profile photo picker/upload (EditProfileView)
     @Published var selectedPhotoItem: PhotosPickerItem?
-    @Published var profileImagePreview: Image?
+    @Published var selectedPhotoData: Data?
+    @Published var profilePhotoUploadState: CloudinaryUploadState = .idle
+
+    // MARK: - Vehicle fields, driver only (VehicleDetailsView)
+    @Published var vehicleModel: String = ""
+    @Published var plateNumber: String = ""
+    @Published var vehicleColor: String = ""
+    @Published var seats: Int = 4
+
+    // MARK: - License photo picker/upload, driver only (VehicleDetailsView)
+    @Published var licensePhotoData: Data?
+    @Published var licenseUploadState: CloudinaryUploadState = .idle
+
+    // MARK: - Save state (EditProfileView toolbar button)
+    @Published var isSaving = false
+    @Published var errorMessage: String?
 
     private let userService = UserService.shared
     private let cloudinaryService = CloudinaryService.shared
 
-    /// Call this when `selectedPhotoItem` changes (PhotosPicker's onChange).
-    func handleSelectedPhoto(uid: String) {
+    /// Populates the form from the currently logged-in user.
+    func load(from user: AppUser) {
+        name = user.name
+        phone = user.phone ?? ""
+        photoURL = user.photoURL
+
+        if let vehicle = user.vehicle {
+            vehicleModel = vehicle.model
+            plateNumber = vehicle.plateNumber
+            vehicleColor = vehicle.color
+            seats = vehicle.seats
+        }
+    }
+
+    /// Loads the raw bytes for the picked profile photo so it can be
+    /// previewed locally before Save is tapped.
+    func loadSelectedPhoto() async {
         guard let item = selectedPhotoItem else { return }
+        if let data = try? await item.loadTransferable(type: Data.self) {
+            selectedPhotoData = data
+        }
+    }
 
-        Task {
-            do {
-                guard
-                    let data = try await item.loadTransferable(type: Data.self),
-                    let uiImage = UIImage(data: data)
-                else {
-                    profilePhotoUploadState = .failure(message: "Couldn't load the selected photo.")
-                    return
-                }
+    /// Uploads any picked images to Cloudinary, then writes name/phone
+    /// (and, for drivers, vehicle fields + photo URLs) to Firestore in
+    /// one update. Returns true on success.
+    func saveProfile(uid: String, role: UserRole) async -> Bool {
+        errorMessage = nil
+        isSaving = true
+        defer { isSaving = false }
 
-                profileImagePreview = Image(uiImage: uiImage)
+        do {
+            var fields: [String: Any] = [
+                "name": name.trimmingCharacters(in: .whitespaces),
+                "phone": phone.trimmingCharacters(in: .whitespaces)
+            ]
+
+            // Profile photo, if a new one was picked
+            if let data = selectedPhotoData, let uiImage = UIImage(data: data) {
                 profilePhotoUploadState = .uploading(progress: 0)
-
                 let url = try await cloudinaryService.uploadImage(
                     uiImage,
                     folder: "profile_photos",
@@ -56,15 +96,40 @@ final class ProfileViewModel: ObservableObject {
                         }
                     }
                 )
-
-                try await userService.updateProfilePhotoURL(uid: uid, url: url)
-
+                fields["photoURL"] = url
+                photoURL = url
                 profilePhotoUploadState = .success(url: url)
-                user?.photoURL = url
-
-            } catch {
-                profilePhotoUploadState = .failure(message: error.localizedDescription)
             }
+
+            // Driver-only vehicle fields
+            if role == .driver {
+                fields["vehicle.model"] = vehicleModel.trimmingCharacters(in: .whitespaces)
+                fields["vehicle.plateNumber"] = plateNumber.trimmingCharacters(in: .whitespaces)
+                fields["vehicle.color"] = vehicleColor.trimmingCharacters(in: .whitespaces)
+                fields["vehicle.seats"] = seats
+
+                if let data = licensePhotoData, let uiImage = UIImage(data: data) {
+                    licenseUploadState = .uploading(progress: 0)
+                    let url = try await cloudinaryService.uploadImage(
+                        uiImage,
+                        folder: "licenses",
+                        onProgress: { [weak self] progress in
+                            Task { @MainActor in
+                                self?.licenseUploadState = .uploading(progress: progress)
+                            }
+                        }
+                    )
+                    fields["vehicle.licenseURL"] = url
+                    licenseUploadState = .success(url: url)
+                }
+            }
+
+            try await userService.updateProfileFields(uid: uid, fields: fields)
+            return true
+
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
         }
     }
 }
