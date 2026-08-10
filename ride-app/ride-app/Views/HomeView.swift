@@ -3,7 +3,9 @@
 //  RideBookingApp
 //
 //  Phase 3 — Now reflects the logged-in user and links to Profile.
-//  Real map/booking UI arrives in Phase 6–7.
+//  Phase 6/7 — Riders get a "Book a Ride" entry point into the live map
+//  / booking flow. Drivers get their online/request-matching UI in
+//  Phase 8, so for now they just see a placeholder note.
 //
 
 import SwiftUI
@@ -12,6 +14,10 @@ struct HomeView: View {
 
     @EnvironmentObject var sessionManager: SessionManager
     @EnvironmentObject var router: Router
+
+    private var isRider: Bool {
+        sessionManager.currentUser?.role != .driver
+    }
 
     var body: some View {
         VStack(spacing: 16) {
@@ -26,11 +32,27 @@ struct HomeView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
 
+            if isRider {
+                Button {
+                    router.push(.mapBooking)
+                } label: {
+                    Label("Book a Ride", systemImage: "mappin.and.ellipse")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .padding(.top, 8)
+            } else {
+                Text("Driver request matching arrives in Phase 8.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 8)
+            }
+
             Button("View Profile") {
                 router.push(.profile)
             }
-            .buttonStyle(.borderedProminent)
-            .padding(.top, 8)
+            .buttonStyle(.bordered)
         }
         .padding()
         .navigationTitle("Home")

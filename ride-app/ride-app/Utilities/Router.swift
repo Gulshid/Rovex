@@ -4,9 +4,30 @@
 //
 //  Phase 1 — Lightweight Router/Coordinator built on NavigationStack.
 //  Phase 2/3 — Added Auth and Profile routes and wired them to real views.
+//  Phase 6 — Added `.mapBooking` (the live map / pickup & drop-off screen).
+//  Phase 7 — `.bookRide` now carries the route details chosen on the map
+//  screen (pickup/drop-off address + coordinate + distance/ETA) and is
+//  wired to the real BookRideView instead of a placeholder.
 //
 
 import SwiftUI
+import CoreLocation
+
+/// CLLocationCoordinate2D isn't Hashable, so routes carry this tiny
+/// Hashable/Codable wrapper instead and convert back at the view boundary.
+struct RouteCoordinate: Hashable {
+    let latitude: Double
+    let longitude: Double
+
+    init(_ coordinate: CLLocationCoordinate2D) {
+        latitude = coordinate.latitude
+        longitude = coordinate.longitude
+    }
+
+    var coordinate: CLLocationCoordinate2D {
+        CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+    }
+}
 
 enum AppRoute: Hashable {
     case login
@@ -15,11 +36,44 @@ enum AppRoute: Hashable {
     case signUp(role: UserRole)
     case profile
     case editProfile
-    case bookRide
+    case mapBooking
+    case bookRide(
+        pickupAddress: String,
+        pickupCoordinate: RouteCoordinate?,
+        dropoffAddress: String,
+        dropoffCoordinate: RouteCoordinate?,
+        distanceKm: Double?,
+        durationMin: Double?
+    )
     case rideTracking(rideId: String)
     case rideHistory
     case rideDetail(rideId: String)
     // Add more as later phases introduce new screens
+}
+
+extension AppRoute {
+    /// Call-site convenience so MapBookingView can keep passing plain
+    /// CLLocationCoordinate2D? values instead of wrapping them in
+    /// RouteCoordinate itself. Deliberately named differently from the
+    /// `.bookRide` case to avoid any ambiguity between an enum case and a
+    /// same-named static function.
+    static func toBookRide(
+        pickupAddress: String,
+        pickupCoordinate: CLLocationCoordinate2D?,
+        dropoffAddress: String,
+        dropoffCoordinate: CLLocationCoordinate2D?,
+        distanceKm: Double?,
+        durationMin: Double?
+    ) -> AppRoute {
+        .bookRide(
+            pickupAddress: pickupAddress,
+            pickupCoordinate: pickupCoordinate.map(RouteCoordinate.init),
+            dropoffAddress: dropoffAddress,
+            dropoffCoordinate: dropoffCoordinate.map(RouteCoordinate.init),
+            distanceKm: distanceKm,
+            durationMin: durationMin
+        )
+    }
 }
 
 @MainActor
@@ -55,8 +109,17 @@ final class Router: ObservableObject {
             ProfileView()
         case .editProfile:
             EditProfileView()
-        case .bookRide:
-            Text("Book Ride — build in Phase 7")
+        case .mapBooking:
+            MapBookingView()
+        case .bookRide(let pickupAddress, let pickupCoordinate, let dropoffAddress, let dropoffCoordinate, let distanceKm, let durationMin):
+            BookRideView(
+                pickupAddress: pickupAddress,
+                pickupCoordinate: pickupCoordinate?.coordinate,
+                dropoffAddress: dropoffAddress,
+                dropoffCoordinate: dropoffCoordinate?.coordinate,
+                distanceKm: distanceKm,
+                durationMin: durationMin
+            )
         case .rideTracking(let rideId):
             Text("Tracking ride \(rideId) — build in Phase 9")
         case .rideHistory:

@@ -41,4 +41,30 @@ enum Constants {
         static let minimumIOSVersion = "16.0"
         static let bundleIdentifier = "com.yourname.RideBookingApp"
     }
+
+    // MARK: - Phase 7 / 10 — Fare engine
+    //
+    // Simple base + per-km + per-minute formula, multiplied per vehicle
+    // type. Values are placeholders for a practice project — tune freely.
+    enum Fare {
+        struct Rates {
+            let baseFare: Double
+            let perKm: Double
+            let perMinute: Double
+            let minimumFare: Double
+        }
+
+        static func rates(for vehicleType: VehicleType) -> Rates {
+            switch vehicleType {
+            case .economy:
+                return Rates(baseFare: 2.00, perKm: 0.80, perMinute: 0.15, minimumFare: 4.00)
+            case .comfort:
+                return Rates(baseFare: 3.00, perKm: 1.10, perMinute: 0.20, minimumFare: 6.00)
+            case .xl:
+                return Rates(baseFare: 4.00, perKm: 1.40, perMinute: 0.25, minimumFare: 8.00)
+            }
+        }
+
+        static let currencySymbol = "$"
+    }
 }
