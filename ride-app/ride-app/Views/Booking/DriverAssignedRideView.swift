@@ -6,8 +6,12 @@
 //
 //  Shown once ride.status is "accepted" or "ongoing" — displays the
 //  assigned driver's name/photo/car/plate/rating pulled from Firestore
-//  by BookRideViewModel. Live driver-location-on-map arrives in Phase 9;
-//  for now this is a status card, not the live map.
+//  by BookRideViewModel.
+//
+//  UPDATED in Phase 9 — now embeds LiveRideMapView, showing the driver's
+//  marker glide toward pickup (then toward drop-off) as
+//  BookRideViewModel.driverLocation updates, plus a live ETA pulled from
+//  the same view model.
 //
 
 import SwiftUI
@@ -21,16 +25,32 @@ struct DriverAssignedRideView: View {
     }
 
     var body: some View {
-        VStack(spacing: 20) {
-            Text(statusText)
-                .font(.title3.weight(.semibold))
-                .padding(.top, 24)
+        VStack(spacing: 0) {
+            LiveRideMapView(
+                pickupCoordinate: viewModel.pickupCoordinate,
+                dropoffCoordinate: viewModel.dropoffCoordinate,
+                driverCoordinate: viewModel.driverLocation
+            )
+            .frame(height: 260)
 
-            driverCard
+            ScrollView {
+                VStack(spacing: 20) {
+                    Text(statusText)
+                        .font(.title3.weight(.semibold))
+                        .padding(.top, 20)
 
-            tripSummaryCard
+                    if let eta = viewModel.etaMinutes {
+                        Text("ETA \(Int(eta.rounded())) min")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
 
-            Spacer()
+                    driverCard
+
+                    tripSummaryCard
+                }
+                .padding(.bottom, 12)
+            }
 
             Button(role: .destructive) {
                 viewModel.showCancelConfirmation = true

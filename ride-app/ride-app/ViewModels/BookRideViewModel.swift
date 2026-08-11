@@ -10,6 +10,11 @@
 //   3. a live Firestore listener drives (searching → driver info → active/cancelled)
 //   4. Cancel Ride updates status back to cancelled
 //
+//  UPDATED in Phase 9 — once a driver is assigned, also observes the
+//  driver's user doc for live `currentLocation` updates (driverLocation)
+//  and recalculates ETA (etaMinutes) as it changes, so
+//  DriverAssignedRideView can show a moving car on the map.
+//
 
 import Foundation
 import CoreLocation
@@ -53,11 +58,17 @@ final class BookRideViewModel: ObservableObject {
     @Published private(set) var activeRide: Ride?
     @Published private(set) var assignedDriver: AppUser?
 
+    // Phase 9 — live driver location + ETA, shown on DriverAssignedRideView's map
+    @Published private(set) var driverLocation: CLLocationCoordinate2D?
+    @Published private(set) var etaMinutes: Double?
+
     @Published var showCancelConfirmation = false
 
     private var observeTask: Task<Void, Never>?
+    private var driverLocationTask: Task<Void, Never>?
     private let rideService = RideService.shared
     private let userService = UserService.shared
+    private let directionsService = DirectionsService.shared
 
     init(
         pickupAddress: String,
@@ -77,6 +88,7 @@ final class BookRideViewModel: ObservableObject {
 
     deinit {
         observeTask?.cancel()
+        driverLocationTask?.cancel()
     }
 
     var canConfirmRide: Bool {
@@ -151,16 +163,59 @@ final class BookRideViewModel: ObservableObject {
             phase = .ongoing
         case .completed:
             phase = .completed
+            driverLocationTask?.cancel()
+            driverLocationTask = nil
         case .cancelled:
             phase = .cancelled
+            driverLocationTask?.cancel()
+            driverLocationTask = nil
         case .scheduled:
             phase = .searching
         }
     }
 
     private func loadDriver(driverId: String?) async {
-        guard let driverId, assignedDriver?.id != driverId else { return }
-        assignedDriver = try? await userService.fetchUser(uid: driverId)
+        guard let driverId else { return }
+        if assignedDriver?.id != driverId {
+            assignedDriver = try? await userService.fetchUser(uid: driverId)
+        }
+        startObservingDriverLocation(driverId: driverId)
+    }
+
+    // MARK: - Phase 9 — Live driver location + ETA
+
+    private func startObservingDriverLocation(driverId: String) {
+        guard driverLocationTask == nil else { return }
+        driverLocationTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                for try await user in userService.observeUser(uid: driverId) {
+                    guard !Task.isCancelled else { return }
+                    guard let location = user.currentLocation else { continue }
+                    let coordinate = location.clCoordinate
+                    self.driverLocation = coordinate
+                    await self.refreshETA(from: coordinate)
+                }
+            } catch {
+                // Live tracking is best-effort — don't surface as a hard error.
+            }
+        }
+    }
+
+    private func refreshETA(from driverCoordinate: CLLocationCoordinate2D) async {
+        let destination: CLLocationCoordinate2D?
+        switch phase {
+        case .driverAssigned:
+            destination = pickupCoordinate
+        case .ongoing:
+            destination = dropoffCoordinate
+        default:
+            destination = nil
+        }
+        guard let destination else { return }
+        if let preview = try? await directionsService.route(from: driverCoordinate, to: destination) {
+            etaMinutes = preview.durationMin
+        }
     }
 
     // MARK: - Cancel
