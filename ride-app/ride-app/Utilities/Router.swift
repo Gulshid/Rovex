@@ -8,6 +8,10 @@
 //  Phase 7 — `.bookRide` now carries the route details chosen on the map
 //  screen (pickup/drop-off address + coordinate + distance/ETA) and is
 //  wired to the real BookRideView instead of a placeholder.
+//  Phase 8 — Added `.driverHome` and `.activeDriverRide(rideId:)` for the
+//  Driver-side flow (go online → incoming request → active ride).
+//  Phase 9 — `.rideTracking` is now wired to a real live-tracking view
+//  instead of a placeholder Text.
 //
 
 import SwiftUI
@@ -48,6 +52,8 @@ enum AppRoute: Hashable {
     case rideTracking(rideId: String)
     case rideHistory
     case rideDetail(rideId: String)
+    case driverHome                              // Phase 8
+    case activeDriverRide(rideId: String)        // Phase 8/9
     // Add more as later phases introduce new screens
 }
 
@@ -121,11 +127,15 @@ final class Router: ObservableObject {
                 durationMin: durationMin
             )
         case .rideTracking(let rideId):
-            Text("Tracking ride \(rideId) — build in Phase 9")
+            RideTrackingView(rideId: rideId)
         case .rideHistory:
             Text("Ride History — build in Phase 12")
         case .rideDetail(let rideId):
             Text("Ride Detail \(rideId) — build in Phase 12")
+        case .driverHome:
+            DriverHomeView()
+        case .activeDriverRide(let rideId):
+            ActiveDriverRideView(rideId: rideId)
         }
     }
 }
