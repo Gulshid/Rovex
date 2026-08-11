@@ -13,6 +13,14 @@
 //   - ActiveDriverRideView (Driver side — Phase 8/9)
 //   - RideTrackingView (Phase 9 standalone tracking)
 //
+//  FIXED — `.animation(...)` was originally chained onto the `Annotation`
+//  inside the MapContentBuilder. Map content values (Marker, Annotation,
+//  etc.) aren't plain SwiftUI `View`s, so `.animation()` doesn't resolve
+//  there (that's the "has no member 'animation'" build error). The fix is
+//  to apply `.animation(value:)` to the `Map` view itself instead — it
+//  still animates the annotation's position because the Map's whole
+//  content is re-evaluated on that value's change.
+//
 
 import SwiftUI
 import MapKit
@@ -46,9 +54,11 @@ struct LiveRideMapView: View {
                         .background(Circle().fill(Color.accentColor))
                         .shadow(radius: 2)
                 }
-                .animation(.linear(duration: Constants.Tracking.driverLocationUpdateInterval), value: driverCoordinate.mapAnimationKey)
             }
         }
+        // Animate the whole map's content whenever the driver's coordinate
+        // changes — this is what makes the car marker glide instead of jump.
+        .animation(.linear(duration: Constants.Tracking.driverLocationUpdateInterval), value: driverAnimationKey)
         .mapControls {
             MapCompass()
         }
@@ -58,8 +68,15 @@ struct LiveRideMapView: View {
         .onAppear { fitCameraIfNeeded() }
     }
 
-    /// Simple string key so `.onChange` fires whenever any of the three
-    /// coordinates we care about first become available.
+    /// Flattened, Equatable key so `.animation(value:)` has something
+    /// concrete to compare (CLLocationCoordinate2D itself isn't Equatable).
+    private var driverAnimationKey: String {
+        guard let driverCoordinate else { return "-" }
+        return "\(driverCoordinate.latitude),\(driverCoordinate.longitude)"
+    }
+
+    /// Same idea, but covering all three coordinates — used to know when to
+    /// re-fit the camera (e.g. once pickup/drop-off first become available).
     private var fitKey: String {
         [pickupCoordinate, dropoffCoordinate, driverCoordinate]
             .map { $0.map { "\($0.latitude),\($0.longitude)" } ?? "-" }
@@ -84,14 +101,6 @@ struct LiveRideMapView: View {
             cameraPosition = .rect(rect.insetBy(dx: -rect.width * 0.25, dy: -rect.height * 0.25))
         }
         hasFitCamera = true
-    }
-}
-
-private extension CLLocationCoordinate2D? {
-    /// Equatable-ish helper so `.animation(value:)` has something to compare.
-    var mapAnimationKey: String {
-        guard let self else { return "-" }
-        return "\(self.latitude),\(self.longitude)"
     }
 }
 

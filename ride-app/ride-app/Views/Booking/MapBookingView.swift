@@ -9,6 +9,13 @@
 //  draggable-pin interaction. "Continue" hands off to BookRideView
 //  (Phase 7) to pick a vehicle type and actually request the ride.
 //
+//  FIXED — Apple's MKDirections has no routing coverage in some regions
+//  (e.g. Pakistan), which used to surface as a dead-end "Couldn't
+//  calculate route" alert. DirectionsService now falls back to a
+//  straight-line estimate instead of throwing, so that alert only fires
+//  for genuine failures now; a small inline note appears instead when
+//  showing a straight-line estimate.
+//
 
 import SwiftUI
 import MapKit
@@ -170,13 +177,22 @@ struct MapBookingView: View {
                 ProgressView("Calculating route…")
                     .frame(maxWidth: .infinity)
             } else if let distance = viewModel.distanceKm, let duration = viewModel.durationMin {
-                HStack {
-                    Label(String(format: "%.1f km", distance), systemImage: "arrow.left.and.right")
-                    Spacer()
-                    Label(String(format: "%.0f min", duration), systemImage: "clock")
+                VStack(spacing: 4) {
+                    HStack {
+                        Label(String(format: "%.1f km", distance), systemImage: "arrow.left.and.right")
+                        Spacer()
+                        Label(String(format: "%.0f min", duration), systemImage: "clock")
+                    }
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
+
+                    if viewModel.isRouteEstimated {
+                        Text("Estimated — live directions aren't available in this area")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
             }
 
             Button {

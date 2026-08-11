@@ -10,6 +10,13 @@
 //  `dropoffCoordinate` / `distanceKm` / `durationMin` straight off this
 //  view model when it creates the Ride document.
 //
+//  FIXED — DirectionsService now falls back to a straight-line estimate
+//  in regions Apple's MKDirections doesn't cover (e.g. Pakistan) instead
+//  of throwing, so `route` (the MKRoute/polyline) can come back nil even
+//  on a "successful" calculation. Added `isRouteEstimated` so the view can
+//  show a small note, and camera-fitting now falls back to framing the
+//  pickup/drop-off pins directly when there's no polyline to fit to.
+//
 
 import Foundation
 import SwiftUI
@@ -36,6 +43,9 @@ final class MapBookingViewModel: ObservableObject {
     @Published var route: MKRoute?
     @Published var distanceKm: Double?
     @Published var durationMin: Double?
+    /// true when distance/duration are a straight-line fallback estimate
+    /// (no MKDirections coverage for this region) rather than a real route.
+    @Published var isRouteEstimated = false
 
     @Published var cameraPosition: MapCameraPosition = .region(
         MKCoordinateRegion(
@@ -149,14 +159,33 @@ final class MapBookingViewModel: ObservableObject {
             route = preview.route
             distanceKm = preview.distanceKm
             durationMin = preview.durationMin
+            isRouteEstimated = preview.isEstimated
 
-            cameraPosition = .rect(preview.route.polyline.boundingMapRect.insetBy(dx: -2000, dy: -2000))
+            if let route = preview.route {
+                cameraPosition = .rect(route.polyline.boundingMapRect.insetBy(dx: -2000, dy: -2000))
+            } else {
+                // No polyline to fit to (straight-line fallback) — frame
+                // the two pins directly instead.
+                fitCamera(to: [pickup, dropoff])
+            }
         } catch {
             errorMessage = error.localizedDescription
             route = nil
             distanceKm = nil
             durationMin = nil
+            isRouteEstimated = false
         }
+    }
+
+    /// Frames the camera around an arbitrary set of coordinates — used when
+    /// there's no MKRoute polyline to fit to (straight-line fallback).
+    private func fitCamera(to coordinates: [CLLocationCoordinate2D]) {
+        guard !coordinates.isEmpty else { return }
+        let rect = coordinates.reduce(MKMapRect.null) { partial, coordinate in
+            let point = MKMapPoint(coordinate)
+            return partial.union(MKMapRect(x: point.x, y: point.y, width: 0, height: 0))
+        }
+        cameraPosition = .rect(rect.insetBy(dx: -rect.width * 0.4 - 500, dy: -rect.height * 0.4 - 500))
     }
 
     func reset() {
@@ -167,5 +196,6 @@ final class MapBookingViewModel: ObservableObject {
         route = nil
         distanceKm = nil
         durationMin = nil
+        isRouteEstimated = false
     }
 }
