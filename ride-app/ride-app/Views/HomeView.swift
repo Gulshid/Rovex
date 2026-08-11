@@ -4,8 +4,10 @@
 //
 //  Phase 3 — Now reflects the logged-in user and links to Profile.
 //  Phase 6/7 — Riders get a "Book a Ride" entry point into the live map
-//  / booking flow. Drivers get their online/request-matching UI in
-//  Phase 8, so for now they just see a placeholder note.
+//  / booking flow.
+//  Phase 8 — Drivers now get a "Go Online" entry point into DriverHomeView
+//  (online/offline toggle + incoming ride requests), replacing the old
+//  placeholder note.
 //
 
 import SwiftUI
@@ -43,10 +45,15 @@ struct HomeView: View {
                 .controlSize(.large)
                 .padding(.top, 8)
             } else {
-                Text("Driver request matching arrives in Phase 8.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 8)
+                Button {
+                    router.push(.driverHome)
+                } label: {
+                    Label("Go Online", systemImage: "car.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .padding(.top, 8)
             }
 
             Button("View Profile") {
