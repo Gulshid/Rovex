@@ -67,4 +67,24 @@ enum Constants {
 
         static let currencySymbol = "$"
     }
+
+    // MARK: - Phase 8 — Driver matching
+    //
+    // Firestore has no native radius query, so nearby-driver matching is a
+    // "requested" rides listener filtered client-side with GeoUtils. Tuned
+    // for a practice app running on the free Spark plan — raise the radius
+    // or timeout freely.
+    enum Matching {
+        static let searchRadiusKm: Double = 8.0
+        static let requestTimeoutSeconds: Int = 15
+    }
+
+    // MARK: - Phase 9 — Live location tracking
+    //
+    // How often the driver's device writes its coordinate back to
+    // Firestore while online/on a ride. Every write costs a Firestore
+    // write op, so keep this modest for the free tier.
+    enum Tracking {
+        static let driverLocationUpdateInterval: TimeInterval = 4.0
+    }
 }
