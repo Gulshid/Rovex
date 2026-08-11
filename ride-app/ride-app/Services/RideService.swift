@@ -17,6 +17,20 @@
 //  drivers can never win the same ride), plus `startRide`/`completeRide`
 //  for progressing an accepted ride.
 //
+//  FIXED — requestRide() previously used addDocument(from:), which encodes
+//  and generates a local document ID synchronously but does NOT wait for
+//  the write to be committed on the server — it's fire-and-forget. The
+//  caller (BookRideViewModel.confirmRide) immediately attached a listener
+//  to that same rideId, and if the Listen reached the backend before the
+//  Create was actually applied, the security rules' read check evaluated
+//  against a non-existent document and threw "Missing or insufficient
+//  permissions". requestRide now builds the DocumentReference up front and
+//  awaits setData(from:) via a checked continuation, so the returned id is
+//  guaranteed to correspond to a document that has actually been written
+//  before any caller starts listening to it. (Also fixed defense-in-depth
+//  on the rules side — see firestore.rules — but this closes the race at
+//  its source instead of only papering over it.)
+//
 
 import Foundation
 import FirebaseFirestore
@@ -48,7 +62,9 @@ final class RideService {
 
     // MARK: - Create
 
-    /// Creates a new ride with status "requested" and returns its id.
+    /// Creates a new ride with status "requested" and returns its id, only
+    /// once the write has actually been confirmed by the server — so it's
+    /// safe for the caller to immediately attach a listener to that id.
     @discardableResult
     func requestRide(
         riderId: String,
@@ -67,7 +83,24 @@ final class RideService {
             estimatedFare: estimatedFare
         )
 
-        let docRef = try ridesCollection.addDocument(from: ride)
+        // Pre-generate the document reference locally (this part is always
+        // synchronous/local — it's the write itself we now wait on).
+        let docRef = ridesCollection.document()
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            do {
+                try docRef.setData(from: ride) { error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume()
+                    }
+                }
+            } catch {
+                continuation.resume(throwing: error)
+            }
+        }
+
         return docRef.documentID
     }
 
