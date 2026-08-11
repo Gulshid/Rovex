@@ -12,6 +12,11 @@
 //  Phase 8 (driver accept/reject) and Phase 9 (live tracking) will read
 //  and write the same `rides` collection through this same service.
 //
+//  UPDATED in Phase 8 — added `observeRequestedRides` (feeds DriverService's
+//  nearby-matching filter) and `acceptRide` (a Firestore transaction so two
+//  drivers can never win the same ride), plus `startRide`/`completeRide`
+//  for progressing an accepted ride.
+//
 
 import Foundation
 import FirebaseFirestore
@@ -19,11 +24,13 @@ import FirebaseFirestore
 enum RideServiceError: LocalizedError {
     case notFound
     case missingId
+    case alreadyTaken
 
     var errorDescription: String? {
         switch self {
         case .notFound: return "That ride could not be found."
         case .missingId: return "Ride is missing an id."
+        case .alreadyTaken: return "Sorry, another driver already accepted this ride."
         }
     }
 }
@@ -107,5 +114,79 @@ final class RideService {
         let snapshot = try await ridesCollection.document(rideId).getDocument()
         guard snapshot.exists else { throw RideServiceError.notFound }
         return try snapshot.data(as: Ride.self)
+    }
+
+    // MARK: - Phase 8 — Driver matching & actions
+
+    /// Live stream of every ride currently in "requested" status.
+    /// DriverService filters/sorts this client-side by distance — see
+    /// DriverService.nearbyRequestedRides.
+    func observeRequestedRides() -> AsyncThrowingStream<[Ride], Error> {
+        AsyncThrowingStream { continuation in
+            let listener = ridesCollection
+                .whereField("status", isEqualTo: RideStatus.requested.rawValue)
+                .addSnapshotListener { snapshot, error in
+                    if let error {
+                        continuation.finish(throwing: error)
+                        return
+                    }
+                    guard let snapshot else { return }
+                    let rides = snapshot.documents.compactMap { try? $0.data(as: Ride.self) }
+                    continuation.yield(rides)
+                }
+
+            continuation.onTermination = { _ in
+                listener.remove()
+            }
+        }
+    }
+
+    /// Assigns a driver to a ride inside a Firestore transaction, so two
+    /// drivers racing to accept the same request can never both win —
+    /// whoever's transaction commits first "requested" status wins; the
+    /// second throws `.alreadyTaken`.
+    func acceptRide(rideId: String, driverId: String) async throws {
+        let rideRef = ridesCollection.document(rideId)
+
+        _ = try await db.runTransaction { transaction, errorPointer in
+            let snapshot: DocumentSnapshot
+            do {
+                snapshot = try transaction.getDocument(rideRef)
+            } catch let error as NSError {
+                errorPointer?.pointee = error
+                return nil
+            }
+
+            guard snapshot.get("status") as? String == RideStatus.requested.rawValue else {
+                errorPointer?.pointee = NSError(
+                    domain: "RideService",
+                    code: 409,
+                    userInfo: [NSLocalizedDescriptionKey: RideServiceError.alreadyTaken.errorDescription ?? ""]
+                )
+                return nil
+            }
+
+            transaction.updateData([
+                "driverId": driverId,
+                "status": RideStatus.accepted.rawValue,
+                "acceptedAt": FieldValue.serverTimestamp()
+            ], forDocument: rideRef)
+
+            return nil
+        }
+    }
+
+    func startRide(rideId: String) async throws {
+        try await ridesCollection.document(rideId).updateData([
+            "status": RideStatus.ongoing.rawValue,
+            "startedAt": FieldValue.serverTimestamp()
+        ])
+    }
+
+    func completeRide(rideId: String) async throws {
+        try await ridesCollection.document(rideId).updateData([
+            "status": RideStatus.completed.rawValue,
+            "completedAt": FieldValue.serverTimestamp()
+        ])
     }
 }
