@@ -10,6 +10,15 @@
 //  removed). AppUser.vehicle.vehicleType (Models/User.swift) references
 //  this same enum.
 //
+//  UPDATED in Phase 10 — added `distanceKm`/`durationMin` (captured once,
+//  at booking time, from the route preview already computed in Phase 6/7)
+//  and `paymentMethod` (chosen on the new Payment Method screen). Both are
+//  needed so RideService.completeRide can recompute a real FareBreakdown
+//  receipt with FareEstimator using the *same* trip numbers the rider saw
+//  when they booked, instead of only ever having a single `estimatedFare`
+//  total with no breakdown. Optional with defaults so old ride documents
+//  written before Phase 10 still decode fine.
+//
 
 import Foundation
 import FirebaseFirestore
@@ -53,7 +62,10 @@ struct Ride: Codable, Identifiable, Equatable {
     var status: RideStatus
     var vehicleType: VehicleType = .economy
     var estimatedFare: Double?
-    var fare: FareBreakdown?
+    var distanceKm: Double?             // Phase 10 - captured at booking time
+    var durationMin: Double?            // Phase 10 - captured at booking time
+    var paymentMethod: PaymentMethod = .cash   // Phase 10 - chosen at booking time
+    var fare: FareBreakdown?            // Phase 10 - final receipt, written on completion
     var scheduledFor: Timestamp?        // Phase 14 - scheduled rides
     var promoCode: String?              // Phase 14 - promo codes
 
@@ -72,6 +84,9 @@ struct Ride: Codable, Identifiable, Equatable {
         case status
         case vehicleType
         case estimatedFare
+        case distanceKm
+        case durationMin
+        case paymentMethod
         case fare
         case scheduledFor
         case promoCode
