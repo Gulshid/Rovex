@@ -15,6 +15,15 @@
 //  and kept alive through a ride) — this view model just observes the ride
 //  document and recalculates ETA to whichever stop is next.
 //
+//  UPDATED in Phase 10 — completeRide() now uses RideService's updated
+//  signature, which writes and returns a real FareBreakdown receipt; that
+//  final `fare` is what ActiveDriverRideView shows on the "Ride completed"
+//  screen instead of just the pre-ride estimate.
+//
+//  UPDATED in Phase 11 — fires a local notification fallback on ride
+//  status transitions (ongoing/completed/cancelled) the same way the
+//  rider side does, in case the driver has backgrounded the app.
+//
 
 import Foundation
 import CoreLocation
@@ -36,6 +45,8 @@ final class ActiveDriverRideViewModel: ObservableObject {
     private let directionsService = DirectionsService.shared
     private let locationManager = LocationManager.shared
 
+    private var lastNotifiedStatus: RideStatus?
+
     init(rideId: String) {
         self.rideId = rideId
     }
@@ -52,6 +63,7 @@ final class ActiveDriverRideViewModel: ObservableObject {
                 for try await updated in rideService.observeRide(rideId: rideId) {
                     guard !Task.isCancelled else { return }
                     self.ride = updated
+                    self.notifyStatusChangeIfNeeded(updated)
                     await self.loadRiderIfNeeded()
                     await self.refreshETA()
                 }
@@ -61,6 +73,17 @@ final class ActiveDriverRideViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    private func notifyStatusChangeIfNeeded(_ ride: Ride) {
+        guard ride.status != lastNotifiedStatus else { return }
+        lastNotifiedStatus = ride.status
+        guard [.ongoing, .completed, .cancelled].contains(ride.status) else { return }
+        PushNotificationService.shared.notifyRideStatusChanged(
+            rideId: ride.id ?? rideId,
+            status: ride.status,
+            forDriver: true
+        )
     }
 
     private func loadRiderIfNeeded() async {
@@ -98,7 +121,8 @@ final class ActiveDriverRideViewModel: ObservableObject {
         isUpdatingStatus = true
         defer { isUpdatingStatus = false }
         do {
-            try await rideService.completeRide(rideId: rideId)
+            let completed = try await rideService.completeRide(rideId: rideId)
+            ride = completed
         } catch {
             errorMessage = error.localizedDescription
         }
