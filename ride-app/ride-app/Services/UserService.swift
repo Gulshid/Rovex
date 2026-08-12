@@ -75,6 +75,16 @@ final class UserService {
         try await updateProfileFields(uid: uid, fields: ["currentLocation": geoPoint])
     }
 
+    // MARK: - Phase 11 — Push notifications
+
+    /// Saves the device's current FCM registration token onto the user's
+    /// doc (`fcmToken`, Models/User.swift) so a future Cloud Function
+    /// trigger would know where to send a push. Overwrites any previous
+    /// token — FCM tokens can rotate, and only the latest one is useful.
+    func updateFCMToken(uid: String, token: String) async throws {
+        try await updateProfileFields(uid: uid, fields: ["fcmToken": token])
+    }
+
     // MARK: - Phase 9 — Live user doc updates
 
     /// Streams live updates to a single user's document — used by the
