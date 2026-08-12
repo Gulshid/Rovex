@@ -26,12 +26,7 @@ struct ActiveDriverRideView: View {
     var body: some View {
         Group {
             if viewModel.isCompleted {
-                statusScreen(
-                    icon: "checkmark.circle.fill",
-                    tint: .green,
-                    title: "Ride completed",
-                    message: "Nice work — you're free to go online for the next request."
-                )
+                completedScreen
             } else if viewModel.isCancelled {
                 statusScreen(
                     icon: "xmark.circle.fill",
@@ -146,6 +141,40 @@ struct ActiveDriverRideView: View {
     }
 
     // MARK: - Terminal states
+
+    // Phase 10 — shows the final fare/payment method from the receipt
+    // RideService.completeRide wrote, instead of a plain "nice work" message.
+    private var completedScreen: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 56))
+                .foregroundStyle(.green)
+            Text("Ride completed")
+                .font(.title2.bold())
+
+            if let fare = viewModel.ride?.fare {
+                VStack(spacing: 4) {
+                    Text("\(Constants.Fare.currencySymbol)\(String(format: "%.2f", fare.total))")
+                        .font(.title.bold())
+                    Text("Paid with \(PaymentMethod(rawValue: fare.paymentMethod)?.displayName ?? fare.paymentMethod.capitalized)")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, 4)
+            }
+
+            Text("Nice work — you're free to go online for the next request.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button("Back to Driver Home") {
+                router.pop()
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(.top, 8)
+        }
+        .padding()
+    }
 
     private func statusScreen(icon: String, tint: Color, title: String, message: String) -> some View {
         VStack(spacing: 16) {
