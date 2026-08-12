@@ -3,6 +3,9 @@
 //  RideBookingApp
 //
 //  Phase 3 — Read-only profile summary with a link into Edit Profile.
+//  UPDATED in Phase 10 — added a wallet balance summary + practice-only
+//  "add funds" action so the Payment Method screen's wallet path is
+//  actually testable (see WalletService).
 //
 
 import SwiftUI
@@ -11,6 +14,7 @@ struct ProfileView: View {
 
     @EnvironmentObject var sessionManager: SessionManager
     @EnvironmentObject var router: Router
+    @State private var isToppingUpWallet = false
 
     var body: some View {
         ScrollView {
@@ -35,6 +39,8 @@ struct ProfileView: View {
                     if user.role == .driver, let vehicle = user.vehicle {
                         vehicleSummary(vehicle)
                     }
+
+                    walletSummary(user)
 
                     Button("Edit Profile") {
                         router.push(.editProfile)
@@ -98,6 +104,49 @@ struct ProfileView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .padding(.horizontal)
+    }
+
+    // MARK: - Phase 10 — Wallet
+    //
+    // Practice-only balance display + "add funds" action (see
+    // WalletService.topUp) — there's no real payment gateway, so this is
+    // just the simplest way to test the Payment Method screen's wallet
+    // path end-to-end.
+
+    private func walletSummary(_ user: AppUser) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Wallet").font(.headline)
+                Spacer()
+                Text("\(Constants.Fare.currencySymbol)\(String(format: "%.2f", user.walletBalance ?? 0))")
+                    .font(.headline)
+            }
+
+            Button {
+                Task {
+                    isToppingUpWallet = true
+                    defer { isToppingUpWallet = false }
+                    if let uid = user.id {
+                        try? await WalletService.shared.topUp(uid: uid, amount: 20)
+                        await sessionManager.refreshCurrentUser()
+                    }
+                }
+            } label: {
+                HStack {
+                    if isToppingUpWallet {
+                        ProgressView()
+                    }
+                    Text("Add \(Constants.Fare.currencySymbol)20.00 (test)")
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .disabled(isToppingUpWallet)
+        }
         .padding()
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 14))
