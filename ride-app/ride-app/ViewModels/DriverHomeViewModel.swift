@@ -14,6 +14,10 @@
 //      the active-ride screen. Reject — skips this ride locally and keeps
 //      matching.
 //
+//  UPDATED in Phase 11 — fires a local notification (fallback for no
+//  Cloud Functions backend) whenever a new nearby request appears, so a
+//  driver who's backgrounded the app while online still gets alerted.
+//
 
 import Foundation
 import CoreLocation
@@ -149,6 +153,12 @@ final class DriverHomeViewModel: ObservableObject {
         }
         incomingRide = next
         startCountdown()
+        // Phase 11 — local notification fallback so a backgrounded driver
+        // still finds out about a nearby request without a Functions
+        // backend sending a real push.
+        if let id = next.id {
+            PushNotificationService.shared.notifyIncomingRideRequest(rideId: id)
+        }
     }
 
     private func startCountdown() {
