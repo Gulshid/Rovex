@@ -31,6 +31,14 @@
 //  on the rules side — see firestore.rules — but this closes the race at
 //  its source instead of only papering over it.)
 //
+//  UPDATED in Phase 10 — requestRide now also stores `distanceKm`/
+//  `durationMin` (so the final receipt can be recomputed with the exact
+//  same trip numbers the rider was quoted) and the rider's chosen
+//  `paymentMethod`. completeRide now computes a real FareBreakdown with
+//  FareEstimator and writes it onto `fare` instead of only flipping
+//  status — that receipt is what RideReceiptView and the driver's
+//  completion screen both read.
+//
 
 import Foundation
 import FirebaseFirestore
@@ -71,7 +79,10 @@ final class RideService {
         pickup: RideLocation,
         dropoff: RideLocation,
         vehicleType: VehicleType,
-        estimatedFare: Double
+        estimatedFare: Double,
+        distanceKm: Double,
+        durationMin: Double,
+        paymentMethod: PaymentMethod
     ) async throws -> String {
         let ride = Ride(
             riderId: riderId,
@@ -80,7 +91,10 @@ final class RideService {
             dropoffLocation: dropoff,
             status: .requested,
             vehicleType: vehicleType,
-            estimatedFare: estimatedFare
+            estimatedFare: estimatedFare,
+            distanceKm: distanceKm,
+            durationMin: durationMin,
+            paymentMethod: paymentMethod
         )
 
         // Pre-generate the document reference locally (this part is always
@@ -216,10 +230,43 @@ final class RideService {
         ])
     }
 
-    func completeRide(rideId: String) async throws {
+    /// Marks a ride completed and writes the final `fare` receipt.
+    ///
+    /// Phase 10 — recomputes the fare with FareEstimator using the same
+    /// distance/duration captured at booking time (so the receipt matches
+    /// what the rider was quoted rather than drifting), tagged with
+    /// whichever `paymentMethod` the rider picked on the Payment Method
+    /// screen. Returns the finalized Ride so the caller (driver-side
+    /// ActiveDriverRideViewModel) can show the payout on its own
+    /// completion screen without a second round-trip read.
+    @discardableResult
+    func completeRide(rideId: String) async throws -> Ride {
+        let ride = try await fetchRide(rideId: rideId)
+
+        let distanceKm = ride.distanceKm ?? 0
+        let durationMin = ride.durationMin ?? 0
+        let estimate = FareEstimator.estimate(
+            distanceKm: distanceKm,
+            durationMin: durationMin,
+            vehicleType: ride.vehicleType
+        )
+
+        let fareData: [String: Any] = [
+            "baseFare": estimate.baseFare,
+            "distanceFare": estimate.distanceFare,
+            "timeFare": estimate.timeFare,
+            "total": estimate.total,
+            "distanceKm": distanceKm,
+            "durationMin": durationMin,
+            "paymentMethod": ride.paymentMethod.rawValue
+        ]
+
         try await ridesCollection.document(rideId).updateData([
             "status": RideStatus.completed.rawValue,
-            "completedAt": FieldValue.serverTimestamp()
+            "completedAt": FieldValue.serverTimestamp(),
+            "fare": fareData
         ])
+
+        return try await fetchRide(rideId: rideId)
     }
 }
