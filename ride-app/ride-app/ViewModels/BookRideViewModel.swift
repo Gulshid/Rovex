@@ -15,6 +15,19 @@
 //  and recalculates ETA (etaMinutes) as it changes, so
 //  DriverAssignedRideView can show a moving car on the map.
 //
+//  UPDATED in Phase 10 — added `selectedPaymentMethod` (chosen on the new
+//  Payment Method screen, sent along with the ride request) and a
+//  one-time wallet charge triggered the moment the ride's own listener
+//  observes it flip to `.completed`. Charging happens here — on the
+//  rider's own device/session — rather than on the driver's, because
+//  firestore.rules only lets a user write to their own /users/{uid} doc
+//  (see WalletService's header comment for the full reasoning).
+//
+//  UPDATED in Phase 11 — fires a local notification (PushNotificationService)
+//  on each ride-status transition the rider observes, so "Driver on the
+//  way" / "Ride started" / "Ride completed" alerts work without a Cloud
+//  Functions backend.
+//
 
 import Foundation
 import CoreLocation
@@ -33,9 +46,10 @@ final class BookRideViewModel: ObservableObject {
     let distanceKm: Double
     let durationMin: Double
 
-    // MARK: - Vehicle + fare
+    // MARK: - Vehicle + fare + payment
 
     @Published var selectedVehicleType: VehicleType = .economy
+    @Published var selectedPaymentMethod: PaymentMethod = .cash
 
     var fareEstimate: FareEstimator.Estimate {
         FareEstimator.estimate(distanceKm: distanceKm, durationMin: durationMin, vehicleType: selectedVehicleType)
@@ -62,6 +76,10 @@ final class BookRideViewModel: ObservableObject {
     @Published private(set) var driverLocation: CLLocationCoordinate2D?
     @Published private(set) var etaMinutes: Double?
 
+    // Phase 10 — surfaced on RideReceiptView if a wallet charge fails
+    // after the ride is already marked complete (e.g. balance changed).
+    @Published private(set) var walletChargeError: String?
+
     @Published var showCancelConfirmation = false
 
     private var observeTask: Task<Void, Never>?
@@ -69,6 +87,12 @@ final class BookRideViewModel: ObservableObject {
     private let rideService = RideService.shared
     private let userService = UserService.shared
     private let directionsService = DirectionsService.shared
+    private let walletService = WalletService.shared
+
+    // Guards against double-notifying/double-charging if the snapshot
+    // listener redelivers the same status (e.g. after a reconnect).
+    private var lastNotifiedStatus: RideStatus?
+    private var hasChargedWallet = false
 
     init(
         pickupAddress: String,
@@ -122,7 +146,10 @@ final class BookRideViewModel: ObservableObject {
                 pickup: pickup,
                 dropoff: dropoff,
                 vehicleType: selectedVehicleType,
-                estimatedFare: fareEstimate.total
+                estimatedFare: fareEstimate.total,
+                distanceKm: distanceKm,
+                durationMin: durationMin,
+                paymentMethod: selectedPaymentMethod
             )
             phase = .searching
             observeRide(rideId: rideId)
@@ -152,6 +179,7 @@ final class BookRideViewModel: ObservableObject {
 
     private func handle(_ ride: Ride) async {
         activeRide = ride
+        notifyStatusChangeIfNeeded(ride)
 
         switch ride.status {
         case .requested:
@@ -165,12 +193,44 @@ final class BookRideViewModel: ObservableObject {
             phase = .completed
             driverLocationTask?.cancel()
             driverLocationTask = nil
+            await chargeWalletIfNeeded(ride)
         case .cancelled:
             phase = .cancelled
             driverLocationTask?.cancel()
             driverLocationTask = nil
         case .scheduled:
             phase = .searching
+        }
+    }
+
+    // MARK: - Phase 11 — local status notifications
+
+    private func notifyStatusChangeIfNeeded(_ ride: Ride) {
+        guard ride.status != lastNotifiedStatus else { return }
+        lastNotifiedStatus = ride.status
+        guard [.accepted, .ongoing, .completed, .cancelled].contains(ride.status) else { return }
+        PushNotificationService.shared.notifyRideStatusChanged(
+            rideId: ride.id ?? "",
+            status: ride.status,
+            forDriver: false
+        )
+    }
+
+    // MARK: - Phase 10 — wallet charge on completion
+
+    private func chargeWalletIfNeeded(_ ride: Ride) async {
+        guard !hasChargedWallet else { return }
+        guard ride.paymentMethod == .wallet else { return }
+        guard let uid = Auth.auth().currentUser?.uid, let total = ride.fare?.total else { return }
+        hasChargedWallet = true
+
+        do {
+            try await walletService.charge(uid: uid, amount: total)
+        } catch {
+            // Ride already happened — surface the problem on the receipt
+            // rather than blocking anything; a real app would fall back
+            // to prompting for another payment method here.
+            walletChargeError = error.localizedDescription
         }
     }
 
