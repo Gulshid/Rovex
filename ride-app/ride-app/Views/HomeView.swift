@@ -9,6 +9,13 @@
 //  (online/offline toggle + incoming ride requests), replacing the old
 //  placeholder note.
 //
+//  UPDATED in Phase 12 — added a "Ride History" entry point for both
+//  roles, and calls RatingService.recomputeAndSaveOwnAverageRating on
+//  appear so the signed-in user's AppUser.rating/ratingCount reflect any
+//  ratings they've received since their last session (see RatingService's
+//  header for why this self-write-on-load pattern is needed instead of
+//  the rater updating it directly).
+//
 
 import SwiftUI
 
@@ -56,6 +63,15 @@ struct HomeView: View {
                 .padding(.top, 8)
             }
 
+            Button {
+                router.push(.rideHistory)
+            } label: {
+                Label("Ride History", systemImage: "clock.arrow.circlepath")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+
             Button("View Profile") {
                 router.push(.profile)
             }
@@ -63,6 +79,11 @@ struct HomeView: View {
         }
         .padding()
         .navigationTitle("Home")
+        .task {
+            if let uid = sessionManager.currentUser?.id {
+                await RatingService.shared.recomputeAndSaveOwnAverageRating(uid: uid)
+            }
+        }
     }
 }
 
