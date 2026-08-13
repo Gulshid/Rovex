@@ -9,6 +9,11 @@
 //  "Confirm Ride" button. Once booked, swaps to a live status view driven
 //  by BookRideViewModel.phase (searching → driver assigned → ongoing).
 //
+//  UPDATED in Phase 12 — `.completed` now shows the real RideReceiptView
+//  (it existed since Phase 10 but was never actually wired in here — this
+//  was showing a generic "Ride completed" status screen instead) with a
+//  "Rate Your Driver" action that pushes `.rateRide`.
+//
 
 import SwiftUI
 import CoreLocation
@@ -46,11 +51,18 @@ struct BookRideView: View {
             case .driverAssigned, .ongoing:
                 DriverAssignedRideView(viewModel: viewModel)
             case .completed:
-                statusScreen(
-                    icon: "checkmark.circle.fill",
-                    tint: .green,
-                    title: "Ride completed",
-                    message: "Thanks for riding with us."
+                RideReceiptView(
+                    ride: viewModel.activeRide,
+                    walletChargeError: viewModel.walletChargeError,
+                    onRate: {
+                        if let rideId = viewModel.activeRide?.id,
+                           let driverId = viewModel.activeRide?.driverId {
+                            router.push(.rateRide(rideId: rideId, ratedUserId: driverId, isDriver: false))
+                        }
+                    },
+                    onDone: {
+                        router.popToRoot()
+                    }
                 )
             case .cancelled:
                 statusScreen(
