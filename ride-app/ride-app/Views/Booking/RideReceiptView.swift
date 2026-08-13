@@ -9,6 +9,17 @@
 //  onto the ride document — a real base + distance + time breakdown, not
 //  just the single estimatedFare total shown on the booking screen.
 //
+//  FIXED in Phase 12 — this view existed since Phase 10 but was never
+//  actually wired into BookRideView, which showed a generic status
+//  screen instead. BookRideView's `.completed` case now presents this
+//  view for real.
+//
+//  UPDATED in Phase 12 — added an optional `onRate` action, shown as a
+//  primary "Rate Your Driver" button above "Back to Home" when supplied,
+//  so the roadmap's "Rate Your Ride screen shown right after a ride
+//  completes" flows directly from the receipt instead of a separate,
+//  disconnected step.
+//
 
 import SwiftUI
 
@@ -19,6 +30,9 @@ struct RideReceiptView: View {
     /// dropped between confirming and completion). nil means either no
     /// charge was needed or it succeeded.
     let walletChargeError: String?
+    /// nil hides the rating button entirely (e.g. if this view is ever
+    /// reused somewhere rating doesn't apply).
+    var onRate: (() -> Void)? = nil
     let onDone: () -> Void
 
     var body: some View {
@@ -48,9 +62,17 @@ struct RideReceiptView: View {
                         .multilineTextAlignment(.center)
                 }
 
-                Button("Back to Home", action: onDone)
-                    .buttonStyle(.borderedProminent)
-                    .padding(.top, 8)
+                VStack(spacing: 10) {
+                    if let onRate {
+                        Button("Rate Your Driver", action: onRate)
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.large)
+                    }
+                    Button("Back to Home", action: onDone)
+                        .buttonStyle(onRate == nil ? .borderedProminent : .bordered)
+                        .controlSize(.large)
+                }
+                .padding(.top, 8)
             }
             .padding()
         }
@@ -97,6 +119,7 @@ struct RideReceiptView: View {
     RideReceiptView(
         ride: nil,
         walletChargeError: nil,
+        onRate: {},
         onDone: {}
     )
 }
