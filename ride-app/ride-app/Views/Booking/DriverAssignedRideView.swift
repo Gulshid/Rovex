@@ -13,12 +13,19 @@
 //  BookRideViewModel.driverLocation updates, plus a live ETA pulled from
 //  the same view model.
 //
+//  UPDATED in Phase 13 — added a "Chat" button next to the driver card,
+//  with an unread-message badge (ChatBadgeViewModel) so the rider notices
+//  a new message from the driver without having to open chat first.
+//
 
 import SwiftUI
 
 struct DriverAssignedRideView: View {
 
     @ObservedObject var viewModel: BookRideViewModel
+    @EnvironmentObject private var router: Router
+    @EnvironmentObject private var sessionManager: SessionManager
+    @StateObject private var chatBadge = ChatBadgeViewModel()
 
     private var statusText: String {
         viewModel.phase == .ongoing ? "On the way to your destination" : "Your driver is on the way"
@@ -47,6 +54,8 @@ struct DriverAssignedRideView: View {
 
                     driverCard
 
+                    chatButton
+
                     tripSummaryCard
                 }
                 .padding(.bottom, 12)
@@ -72,6 +81,11 @@ struct DriverAssignedRideView: View {
                 Task { await viewModel.cancelRide() }
             }
             Button("Keep Ride", role: .cancel) {}
+        }
+        .onAppear {
+            if let rideId = viewModel.activeRide?.id, let uid = sessionManager.currentUser?.id {
+                chatBadge.start(rideId: rideId, currentUserId: uid)
+            }
         }
     }
 
@@ -113,6 +127,35 @@ struct DriverAssignedRideView: View {
         .padding(.horizontal)
     }
 
+    private var chatButton: some View {
+        Button {
+            if let rideId = viewModel.activeRide?.id {
+                router.push(.chat(rideId: rideId))
+            }
+        } label: {
+            HStack {
+                Image(systemName: "message.fill")
+                Text("Chat with driver")
+                Spacer()
+                if chatBadge.unreadCount > 0 {
+                    Text("\(chatBadge.unreadCount)")
+                        .font(.caption2.bold())
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Color.red, in: Capsule())
+                        .foregroundStyle(.white)
+                }
+                Image(systemName: "chevron.right")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .buttonStyle(.plain)
+        .padding()
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16))
+        .padding(.horizontal)
+    }
+
     private var tripSummaryCard: some View {
         VStack(alignment: .leading, spacing: 10) {
             Label(viewModel.pickupAddress, systemImage: "circle.fill")
@@ -147,4 +190,6 @@ struct DriverAssignedRideView: View {
             durationMin: 14
         )
     )
+    .environmentObject(Router())
+    .environmentObject(SessionManager())
 }
