@@ -10,6 +10,13 @@
 //  The map + ETA update live as the driver's own location updates
 //  (LocationManager) and as the ride document changes.
 //
+//  UPDATED in Phase 12 — completedScreen now offers a "Rate Rider" button
+//  that pushes `.rateRide`.
+//
+//  UPDATED in Phase 13 — added a "Chat" button (with unread badge) next
+//  to the rider card, mirroring the rider-side entry point added to
+//  DriverAssignedRideView.
+//
 
 import SwiftUI
 
@@ -17,7 +24,9 @@ struct ActiveDriverRideView: View {
 
     @StateObject private var viewModel: ActiveDriverRideViewModel
     @StateObject private var locationManager = LocationManager.shared
+    @StateObject private var chatBadge = ChatBadgeViewModel()
     @EnvironmentObject private var router: Router
+    @EnvironmentObject private var sessionManager: SessionManager
 
     init(rideId: String) {
         _viewModel = StateObject(wrappedValue: ActiveDriverRideViewModel(rideId: rideId))
@@ -45,6 +54,9 @@ struct ActiveDriverRideView: View {
             locationManager.requestPermissionIfNeeded()
             locationManager.startUpdating()
             viewModel.start()
+            if let uid = sessionManager.currentUser?.id {
+                chatBadge.start(rideId: viewModel.rideId, currentUserId: uid)
+            }
         }
         .alert(
             "Something went wrong",
@@ -75,6 +87,8 @@ struct ActiveDriverRideView: View {
     private var bottomCard: some View {
         VStack(spacing: 14) {
             riderCard
+
+            chatButton
 
             HStack {
                 Text(viewModel.isOngoing ? "Heading to drop-off" : "Heading to pickup")
@@ -140,6 +154,32 @@ struct ActiveDriverRideView: View {
         }
     }
 
+    private var chatButton: some View {
+        Button {
+            router.push(.chat(rideId: viewModel.rideId))
+        } label: {
+            HStack {
+                Image(systemName: "message.fill")
+                Text("Chat with rider")
+                Spacer()
+                if chatBadge.unreadCount > 0 {
+                    Text("\(chatBadge.unreadCount)")
+                        .font(.caption2.bold())
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Color.red, in: Capsule())
+                        .foregroundStyle(.white)
+                }
+                Image(systemName: "chevron.right")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .buttonStyle(.plain)
+        .padding()
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
+    }
+
     // MARK: - Terminal states
 
     // Phase 10 — shows the final fare/payment method from the receipt
@@ -167,11 +207,21 @@ struct ActiveDriverRideView: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+
+            if let riderId = viewModel.ride?.riderId, let rideId = viewModel.ride?.id {
+                Button("Rate Rider") {
+                    router.push(.rateRide(rideId: rideId, ratedUserId: riderId, isDriver: true))
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .padding(.top, 8)
+            }
+
             Button("Back to Driver Home") {
                 router.pop()
             }
-            .buttonStyle(.borderedProminent)
-            .padding(.top, 8)
+            .buttonStyle(.bordered)
+            .controlSize(.large)
         }
         .padding()
     }
@@ -201,5 +251,6 @@ struct ActiveDriverRideView: View {
     NavigationStack {
         ActiveDriverRideView(rideId: "preview-ride-id")
             .environmentObject(Router())
+            .environmentObject(SessionManager())
     }
 }
