@@ -13,6 +13,14 @@
 //  Phase 9 — `.rideTracking` is now wired to a real live-tracking view
 //  instead of a placeholder Text.
 //
+//  UPDATED in Phase 12 — `.rideHistory`/`.rideDetail` are now wired to
+//  real views instead of placeholder Text (they'd been sitting unused
+//  since Phase 7). Added `.rateRide(rideId:ratedUserId:isDriver:)` for
+//  the post-ride rating screen.
+//
+//  UPDATED in Phase 13 — added `.chat(rideId:)` for the in-ride chat
+//  screen, reachable from both the rider's and driver's active-ride views.
+//
 
 import SwiftUI
 import CoreLocation
@@ -54,6 +62,8 @@ enum AppRoute: Hashable {
     case rideDetail(rideId: String)
     case driverHome                              // Phase 8
     case activeDriverRide(rideId: String)        // Phase 8/9
+    case rateRide(rideId: String, ratedUserId: String, isDriver: Bool)  // Phase 12
+    case chat(rideId: String)                    // Phase 13
     // Add more as later phases introduce new screens
 }
 
@@ -129,13 +139,17 @@ final class Router: ObservableObject {
         case .rideTracking(let rideId):
             RideTrackingView(rideId: rideId)
         case .rideHistory:
-            Text("Ride History — build in Phase 12")
+            RideHistoryView()
         case .rideDetail(let rideId):
-            Text("Ride Detail \(rideId) — build in Phase 12")
+            RideDetailView(rideId: rideId)
         case .driverHome:
             DriverHomeView()
         case .activeDriverRide(let rideId):
             ActiveDriverRideView(rideId: rideId)
+        case .rateRide(let rideId, let ratedUserId, let isDriver):
+            RateRideView(rideId: rideId, ratedUserId: ratedUserId, isDriver: isDriver)
+        case .chat(let rideId):
+            ChatView(rideId: rideId)
         }
     }
 }
