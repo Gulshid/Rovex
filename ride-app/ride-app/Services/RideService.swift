@@ -39,6 +39,19 @@
 //  status — that receipt is what RideReceiptView and the driver's
 //  completion screen both read.
 //
+//  UPDATED in Phase 12 — added `fetchRideHistoryPage`, a cursor-paginated
+//  query (order by createdAt desc, startAfterDocument) feeding
+//  RideHistoryViewModel. Riders and drivers both call the same method
+//  with a different `field` ("riderId" vs "driverId") since both are
+//  just equality-filtered reads over the same `rides` collection.
+//
+//  A NOTE ON INDEXES — the first time each of these runs (once for
+//  riderId+createdAt, once for driverId+createdAt), Firestore will reject
+//  the query with an error that includes a direct link to create the
+//  needed composite index in the Firebase console. Click it once per
+//  field and the query works from then on — this is normal and expected
+//  the first time a new query shape runs against a non-trivial collection.
+//
 
 import Foundation
 import FirebaseFirestore
@@ -268,5 +281,32 @@ final class RideService {
         ])
 
         return try await fetchRide(rideId: rideId)
+    }
+
+    // MARK: - Phase 12 — Ride history (paginated)
+
+    /// One page of a user's past rides, newest first. Pass `field` as
+    /// `"riderId"` for a rider's history or `"driverId"` for a driver's —
+    /// both are just equality-filtered, createdAt-descending reads over
+    /// the same collection. Pass the last document from the previous page
+    /// as `after` to fetch the next one (Firestore cursor pagination).
+    func fetchRideHistoryPage(
+        forUserId uid: String,
+        field: String,
+        pageSize: Int = 20,
+        after lastDocument: DocumentSnapshot? = nil
+    ) async throws -> (rides: [Ride], lastDocument: DocumentSnapshot?) {
+        var query: Query = ridesCollection
+            .whereField(field, isEqualTo: uid)
+            .order(by: "createdAt", descending: true)
+            .limit(to: pageSize)
+
+        if let lastDocument {
+            query = query.start(afterDocument: lastDocument)
+        }
+
+        let snapshot = try await query.getDocuments()
+        let rides = snapshot.documents.compactMap { try? $0.data(as: Ride.self) }
+        return (rides, snapshot.documents.last)
     }
 }
