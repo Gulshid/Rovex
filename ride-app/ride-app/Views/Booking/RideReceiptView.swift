@@ -67,10 +67,15 @@ struct RideReceiptView: View {
                         Button("Rate Your Driver", action: onRate)
                             .buttonStyle(.borderedProminent)
                             .controlSize(.large)
+
+                        Button("Back to Home", action: onDone)
+                            .buttonStyle(.bordered)
+                            .controlSize(.large)
+                    } else {
+                        Button("Back to Home", action: onDone)
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.large)
                     }
-                    Button("Back to Home", action: onDone)
-                        .buttonStyle(onRate == nil ? .borderedProminent : .bordered)
-                        .controlSize(.large)
                 }
                 .padding(.top, 8)
             }
