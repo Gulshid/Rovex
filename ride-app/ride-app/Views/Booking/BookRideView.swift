@@ -14,6 +14,11 @@
 //  was showing a generic "Ride completed" status screen instead) with a
 //  "Rate Your Driver" action that pushes `.rateRide`.
 //
+//  UPDATED in Phase 14 — added a promo code field + "Schedule for Later"
+//  option to the vehicle-selection screen, and a `.scheduledConfirmation`
+//  case for the new phase BookRideViewModel enters after scheduleRide()
+//  succeeds.
+//
 
 import SwiftUI
 import CoreLocation
@@ -78,11 +83,89 @@ struct BookRideView: View {
                     title: "Something went wrong",
                     message: message
                 )
+            case .scheduledConfirmation(let date):
+                scheduledConfirmationScreen(date)
             }
         }
         .navigationTitle("Choose a ride")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(viewModel.phase != .idle)
+        .sheet(isPresented: $viewModel.showSchedulePicker) {
+            scheduleSheet
+        }
+    }
+
+    // MARK: - Phase 14 — Schedule for later
+
+    private var scheduleSheet: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                DatePicker(
+                    "Pickup time",
+                    selection: $viewModel.scheduledDate,
+                    in: Date()...,
+                    displayedComponents: [.date, .hourAndMinute]
+                )
+                .datePickerStyle(.graphical)
+                .padding(.horizontal)
+
+                Button {
+                    Task {
+                        await viewModel.scheduleRide()
+                        if case .scheduledConfirmation = viewModel.phase {
+                            viewModel.showSchedulePicker = false
+                        }
+                    }
+                } label: {
+                    HStack {
+                        if viewModel.isScheduling {
+                            ProgressView().tint(.white)
+                        }
+                        Text("Confirm Scheduled Ride")
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .padding(.horizontal)
+                .disabled(viewModel.isScheduling)
+
+                Spacer()
+            }
+            .padding(.top)
+            .navigationTitle("Schedule Ride")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { viewModel.showSchedulePicker = false }
+                }
+            }
+        }
+    }
+
+    private func scheduledConfirmationScreen(_ date: Date) -> some View {
+        VStack(spacing: 16) {
+            Image(systemName: "calendar.badge.clock")
+                .font(.system(size: 56))
+                .foregroundStyle(.blue)
+            Text("Ride scheduled")
+                .font(.title2.bold())
+            Text("We'll match you with a driver around \(date.formatted(date: .abbreviated, time: .shortened)).")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button("View Scheduled Rides") {
+                router.push(.scheduledRides)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .padding(.top, 8)
+            Button("Back to Home") {
+                router.popToRoot()
+            }
+            .buttonStyle(.bordered)
+        }
+        .padding()
     }
 
     // MARK: - Idle / vehicle selection
@@ -110,12 +193,57 @@ struct BookRideView: View {
                             viewModel.selectedVehicleType = type
                         }
                     }
+
+                    promoCodeSection
                 }
                 .padding()
             }
 
             confirmBar
         }
+    }
+
+    // MARK: - Phase 14 — Promo code
+
+    private var promoCodeSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if let promo = viewModel.appliedPromoCode {
+                HStack {
+                    Label("\(promo.id ?? "Promo") applied", systemImage: "tag.fill")
+                        .foregroundStyle(.green)
+                    Spacer()
+                    Button("Remove") {
+                        viewModel.removePromoCode()
+                    }
+                    .font(.footnote)
+                }
+            } else {
+                HStack {
+                    TextField("Promo code", text: $viewModel.promoCodeInput)
+                        .textInputAutocapitalization(.characters)
+                        .autocorrectionDisabled()
+                        .textFieldStyle(.roundedBorder)
+
+                    Button {
+                        Task { await viewModel.applyPromoCode() }
+                    } label: {
+                        if viewModel.isApplyingPromoCode {
+                            ProgressView()
+                        } else {
+                            Text("Apply")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(viewModel.promoCodeInput.trimmingCharacters(in: .whitespaces).isEmpty || viewModel.isApplyingPromoCode)
+                }
+                if let error = viewModel.promoCodeError {
+                    Text(error)
+                        .font(.footnote)
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+        .padding(.top, 4)
     }
 
     private var tripSummary: some View {
@@ -153,13 +281,21 @@ struct BookRideView: View {
                         ProgressView()
                             .tint(.white)
                     }
-                    Text("Confirm \(viewModel.selectedVehicleType.displayName) • \(Constants.Fare.currencySymbol)\(String(format: "%.2f", viewModel.fareEstimate.total))")
+                    Text("Confirm \(viewModel.selectedVehicleType.displayName) • \(Constants.Fare.currencySymbol)\(String(format: "%.2f", viewModel.discountedTotal))")
                 }
                 .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .disabled(!viewModel.canConfirmRide || viewModel.phase == .booking)
+
+            Button("Schedule for Later") {
+                viewModel.showSchedulePicker = true
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.large)
+            .frame(maxWidth: .infinity)
+            .disabled(!viewModel.canConfirmRide)
         }
         .padding()
         .background(.regularMaterial)

@@ -17,6 +17,9 @@
 //  with an unread-message badge (ChatBadgeViewModel) so the rider notices
 //  a new message from the driver without having to open chat first.
 //
+//  UPDATED in Phase 14 — added SOSButton as a floating overlay on the map,
+//  visible for the whole active ride.
+//
 
 import SwiftUI
 
@@ -39,6 +42,17 @@ struct DriverAssignedRideView: View {
                 driverCoordinate: viewModel.driverLocation
             )
             .frame(height: 260)
+            .overlay(alignment: .topTrailing) {
+                if let uid = sessionManager.currentUser?.id {
+                    SOSButton(
+                        userName: sessionManager.currentUser?.name ?? "Rider",
+                        userId: uid,
+                        rideId: viewModel.activeRide?.id,
+                        coordinate: viewModel.pickupCoordinate
+                    )
+                    .padding(12)
+                }
+            }
 
             ScrollView {
                 VStack(spacing: 20) {

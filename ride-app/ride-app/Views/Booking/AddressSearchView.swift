@@ -9,6 +9,12 @@
 //  pickup and drop-off fields; the field being edited is passed in so the
 //  caller knows which one to update on selection.
 //
+//  UPDATED in Phase 14 — added Home/Work quick-select chips above the
+//  search results when the signed-in user has saved a favorite location
+//  (FavoriteLocationsView). Uses the coordinate saved alongside the
+//  address (homeAddressGeoPoint/workAddressGeoPoint) directly rather than
+//  re-geocoding on every tap.
+//
 
 import SwiftUI
 import CoreLocation
@@ -18,6 +24,7 @@ struct AddressSearchView: View {
     let field: AddressField
     let onSelect: (ResolvedAddress) -> Void
 
+    @EnvironmentObject private var sessionManager: SessionManager
     @StateObject private var viewModel = AddressSearchViewModel()
     @Environment(\.dismiss) private var dismiss
     @FocusState private var isSearchFocused: Bool
@@ -30,6 +37,10 @@ struct AddressSearchView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 searchField
+
+                if hasFavorites {
+                    favoritesRow
+                }
 
                 if let error = viewModel.errorMessage {
                     Text(error)
@@ -81,26 +92,37 @@ struct AddressSearchView: View {
         }
     }
 
-    private var searchField: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-            TextField("Search for an address or place", text: $viewModel.queryText)
-                .focused($isSearchFocused)
-                .textInputAutocapitalization(.words)
-                .autocorrectionDisabled()
-            if !viewModel.queryText.isEmpty {
-                Button {
-                    viewModel.queryText = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
+    private var hasFavorites: Bool {
+        sessionManager.currentUser?.homeAddress?.isEmpty == false
+            || sessionManager.currentUser?.workAddress?.isEmpty == false
+    }
+
+    private var favoritesRow: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                if let home = sessionManager.currentUser?.homeAddress, !home.isEmpty,
+                   let geoPoint = sessionManager.currentUser?.homeAddressGeoPoint {
+                    favoriteChip(icon: "house.fill", label: "Home", address: home, coordinate: geoPoint.clCoordinate)
+                }
+                if let work = sessionManager.currentUser?.workAddress, !work.isEmpty,
+                   let geoPoint = sessionManager.currentUser?.workAddressGeoPoint {
+                    favoriteChip(icon: "briefcase.fill", label: "Work", address: work, coordinate: geoPoint.clCoordinate)
                 }
             }
+            .padding(.horizontal)
+            .padding(.bottom, 8)
         }
-        .padding(10)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
-        .padding()
+    }
+
+    private func favoriteChip(icon: String, label: String, address: String, coordinate: CLLocationCoordinate2D) -> some View {
+        Button {
+            onSelect(ResolvedAddress(address: address, coordinate: coordinate))
+            dismiss()
+        } label: {
+            Label(label, systemImage: icon)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
     }
 
     private func select(_ suggestion: AddressSuggestion) async {
@@ -112,4 +134,5 @@ struct AddressSearchView: View {
 
 #Preview {
     AddressSearchView(field: .pickup) { _ in }
+        .environmentObject(SessionManager())
 }
