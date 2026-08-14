@@ -11,6 +11,11 @@
 //  ActiveDriverRideView. Only acted on once logged in and once there's a
 //  real NavigationStack to push onto.
 //
+//  FIX — clears router.path when isLoggedIn becomes false so the stale
+//  navigation stack (e.g. Profile screen still in path) is not carried
+//  over into the logged-out NavigationStack, which caused the Profile
+//  screen to appear with a spinner instead of returning to LoginView.
+//
 
 import SwiftUI
 
@@ -47,6 +52,11 @@ struct RootView: View {
             }
         }
         .animation(.default, value: sessionManager.isLoggedIn)
+        .onChange(of: sessionManager.isLoggedIn) { _, loggedIn in
+            if !loggedIn {
+                router.popToRoot()
+            }
+        }
         .onChange(of: pushService.pendingDeepLink) { _, deepLink in
             guard let deepLink, sessionManager.isLoggedIn else { return }
             switch deepLink.kind {
