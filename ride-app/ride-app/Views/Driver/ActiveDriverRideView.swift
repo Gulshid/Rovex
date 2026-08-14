@@ -17,6 +17,8 @@
 //  to the rider card, mirroring the rider-side entry point added to
 //  DriverAssignedRideView.
 //
+//  UPDATED in Phase 14 — added SOSButton as a floating overlay on the map.
+//
 
 import SwiftUI
 
@@ -79,6 +81,17 @@ struct ActiveDriverRideView: View {
                 driverCoordinate: locationManager.currentLocation
             )
             .frame(maxHeight: .infinity)
+            .overlay(alignment: .topTrailing) {
+                if let uid = sessionManager.currentUser?.id {
+                    SOSButton(
+                        userName: sessionManager.currentUser?.name ?? "Driver",
+                        userId: uid,
+                        rideId: viewModel.ride?.id,
+                        coordinate: locationManager.currentLocation
+                    )
+                    .padding(12)
+                }
+            }
 
             bottomCard
         }
