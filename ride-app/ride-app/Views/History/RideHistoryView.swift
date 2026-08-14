@@ -9,6 +9,10 @@
 //  user's past rides — riders and drivers each see their own side of the
 //  same `rides` collection, determined from SessionManager's role.
 //
+//  UPDATED in Phase 15 — swapped the plain ProgressView spinner for
+//  RideRowSkeletonList on first load, and the hand-rolled empty-state
+//  VStack for the shared EmptyStateView component.
+//
 
 import SwiftUI
 
@@ -21,14 +25,14 @@ struct RideHistoryView: View {
     var body: some View {
         Group {
             if viewModel.isLoading && viewModel.rides.isEmpty {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                ScrollView { RideRowSkeletonList() }
             } else if viewModel.rides.isEmpty {
                 emptyState
             } else {
                 list
             }
         }
+        .animation(Theme.AnimationToken.statusChange, value: viewModel.isLoading)
         .navigationTitle("Ride History")
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -79,17 +83,11 @@ struct RideHistoryView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "clock.arrow.circlepath")
-                .font(.system(size: 44))
-                .foregroundStyle(.secondary)
-            Text("No rides yet")
-                .font(.headline)
-            Text("Your past rides will show up here.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        EmptyStateView(
+            icon: "clock.arrow.circlepath",
+            title: "No rides yet",
+            message: "Your past rides will show up here."
+        )
     }
 }
 

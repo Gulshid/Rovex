@@ -9,6 +9,10 @@
 //  rides are a small, self-limiting list (nobody schedules hundreds of
 //  future rides), unlike Phase 12's full ride history.
 //
+//  UPDATED in Phase 15 — swapped the plain ProgressView spinner and
+//  hand-rolled empty state for the shared RideRowSkeletonList/
+//  EmptyStateView components (see Views/Components).
+//
 
 import SwiftUI
 
@@ -49,13 +53,14 @@ struct ScheduledRidesView: View {
     var body: some View {
         Group {
             if viewModel.isLoading && viewModel.rides.isEmpty {
-                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                ScrollView { RideRowSkeletonList(rowCount: 3) }
             } else if viewModel.rides.isEmpty {
                 emptyState
             } else {
                 list
             }
         }
+        .animation(Theme.AnimationToken.statusChange, value: viewModel.isLoading)
         .navigationTitle("Scheduled Rides")
         .navigationBarTitleDisplayMode(.inline)
         .task {
@@ -110,19 +115,11 @@ struct ScheduledRidesView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "calendar.badge.clock")
-                .font(.system(size: 44))
-                .foregroundStyle(.secondary)
-            Text("No scheduled rides")
-                .font(.headline)
-            Text("Book a ride and choose \"Schedule for Later\" to plan ahead.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        EmptyStateView(
+            icon: "calendar.badge.clock",
+            title: "No scheduled rides",
+            message: "Book a ride and choose \"Schedule for Later\" to plan ahead."
+        )
     }
 }
 

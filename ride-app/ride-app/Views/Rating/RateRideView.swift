@@ -12,6 +12,16 @@
 //  their history who hasn't rated yet.
 //
 
+//  UPDATED in Phase 15 — the star picker previously used a plain Image
+//  with .onTapGesture, which VoiceOver has no way to recognize as an
+//  interactive control (no accessibility trait, nothing to announce).
+//  It's now real Buttons with per-star accessibility labels ("1 star" …
+//  "5 stars", selection state announced via .isSelected), and the row is
+//  exposed to VoiceOver as a single adjustable element so a screen-reader
+//  user can swipe up/down to change the rating instead of hunting for
+//  five separate tap targets.
+//
+
 import SwiftUI
 
 struct RateRideView: View {
@@ -94,12 +104,25 @@ struct RateRideView: View {
     private var starPicker: some View {
         HStack(spacing: 10) {
             ForEach(1...5, id: \.self) { star in
-                Image(systemName: star <= viewModel.value ? "star.fill" : "star")
-                    .font(.system(size: 32))
-                    .foregroundStyle(.yellow)
-                    .onTapGesture {
-                        viewModel.value = star
-                    }
+                Button {
+                    viewModel.value = star
+                } label: {
+                    Image(systemName: star <= viewModel.value ? "star.fill" : "star")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.yellow)
+                }
+                .accessibilityLabel("\(star) star\(star == 1 ? "" : "s")")
+                .accessibilityAddTraits(star == viewModel.value ? .isSelected : [])
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Rating")
+        .accessibilityValue("\(viewModel.value) out of 5 stars")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: viewModel.value = min(5, viewModel.value + 1)
+            case .decrement: viewModel.value = max(1, viewModel.value - 1)
+            @unknown default: break
             }
         }
     }
