@@ -15,6 +15,11 @@
 //  stream so the Rider side can watch a specific driver's `currentLocation`
 //  field update in real time (that's how the live tracking map moves).
 //
+//  UPDATED in Phase 14 — added `updateFavoriteLocation` (home/work,
+//  address + geocoded coordinate so AddressSearchView's quick-select
+//  chips don't need to re-geocode on every tap) and
+//  `updateEmergencyContact`.
+//
 
 import Foundation
 import CoreLocation
@@ -83,6 +88,59 @@ final class UserService {
     /// token — FCM tokens can rotate, and only the latest one is useful.
     func updateFCMToken(uid: String, token: String) async throws {
         try await updateProfileFields(uid: uid, fields: ["fcmToken": token])
+    }
+
+    // MARK: - Phase 14 — Favorite locations & emergency contact
+
+    enum FavoriteLocationKind: String {
+        case home
+        case work
+    }
+
+    /// Saves a Home/Work address + its geocoded coordinate together, so
+    /// AddressSearchView's quick-select chips can use the coordinate
+    /// directly without re-geocoding the address string on every tap.
+    func updateFavoriteLocation(
+        uid: String,
+        kind: FavoriteLocationKind,
+        address: String,
+        coordinate: CLLocationCoordinate2D
+    ) async throws {
+        let geoPoint = GeoPoint(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        switch kind {
+        case .home:
+            try await updateProfileFields(uid: uid, fields: [
+                "homeAddress": address,
+                "homeAddressGeoPoint": geoPoint
+            ])
+        case .work:
+            try await updateProfileFields(uid: uid, fields: [
+                "workAddress": address,
+                "workAddressGeoPoint": geoPoint
+            ])
+        }
+    }
+
+    func clearFavoriteLocation(uid: String, kind: FavoriteLocationKind) async throws {
+        switch kind {
+        case .home:
+            try await updateProfileFields(uid: uid, fields: [
+                "homeAddress": FieldValue.delete(),
+                "homeAddressGeoPoint": FieldValue.delete()
+            ])
+        case .work:
+            try await updateProfileFields(uid: uid, fields: [
+                "workAddress": FieldValue.delete(),
+                "workAddressGeoPoint": FieldValue.delete()
+            ])
+        }
+    }
+
+    func updateEmergencyContact(uid: String, name: String, phone: String) async throws {
+        try await updateProfileFields(uid: uid, fields: [
+            "emergencyContactName": name,
+            "emergencyContactPhone": phone
+        ])
     }
 
     // MARK: - Phase 9 — Live user doc updates
