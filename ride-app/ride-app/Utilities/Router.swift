@@ -21,6 +21,11 @@
 //  UPDATED in Phase 13 — added `.chat(rideId:)` for the in-ride chat
 //  screen, reachable from both the rider's and driver's active-ride views.
 //
+//  UPDATED in Phase 14 — added `.scheduledRides` (Favorite Locations and
+//  Emergency Contact are reached via plain NavigationLinks from
+//  EditProfileView rather than the Router, since they don't need any
+//  associated data).
+//
 
 import SwiftUI
 import CoreLocation
@@ -64,6 +69,7 @@ enum AppRoute: Hashable {
     case activeDriverRide(rideId: String)        // Phase 8/9
     case rateRide(rideId: String, ratedUserId: String, isDriver: Bool)  // Phase 12
     case chat(rideId: String)                    // Phase 13
+    case scheduledRides                           // Phase 14
     // Add more as later phases introduce new screens
 }
 
@@ -150,6 +156,8 @@ final class Router: ObservableObject {
             RateRideView(rideId: rideId, ratedUserId: ratedUserId, isDriver: isDriver)
         case .chat(let rideId):
             ChatView(rideId: rideId)
+        case .scheduledRides:
+            ScheduledRidesView()
         }
     }
 }

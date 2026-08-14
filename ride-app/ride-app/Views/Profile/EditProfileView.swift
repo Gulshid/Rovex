@@ -6,6 +6,10 @@
 //  VehicleDetailsView. Photo upload to Cloudinary lands in Phase 5 —
 //  for now the picked image is only previewed locally.
 //
+//  UPDATED in Phase 14 — added links to FavoriteLocationsView (rider-
+//  focused, but harmless to show for drivers too) and
+//  EmergencyContactView.
+//
 
 import SwiftUI
 import PhotosUI
@@ -44,6 +48,15 @@ struct EditProfileView: View {
                     NavigationLink("Vehicle Details") {
                         VehicleDetailsView(viewModel: viewModel)
                     }
+                }
+            }
+
+            Section("Ride Preferences") {
+                NavigationLink("Favorite Locations") {
+                    FavoriteLocationsView()
+                }
+                NavigationLink("Emergency Contact") {
+                    EmergencyContactView()
                 }
             }
 

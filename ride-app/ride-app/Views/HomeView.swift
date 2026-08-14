@@ -16,6 +16,13 @@
 //  header for why this self-write-on-load pattern is needed instead of
 //  the rater updating it directly).
 //
+//  UPDATED in Phase 14 — added a "Scheduled Rides" entry point for
+//  riders, and calls RideService.activateDueScheduledRides on appear so
+//  any of the rider's scheduled rides whose time has arrived actually
+//  become visible to driver matching (see that method's header — there's
+//  no server-side cron in this practice app, so this has to be
+//  opportunistic/client-triggered).
+//
 
 import SwiftUI
 
@@ -72,6 +79,17 @@ struct HomeView: View {
             .buttonStyle(.bordered)
             .controlSize(.large)
 
+            if isRider {
+                Button {
+                    router.push(.scheduledRides)
+                } label: {
+                    Label("Scheduled Rides", systemImage: "calendar.badge.clock")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+            }
+
             Button("View Profile") {
                 router.push(.profile)
             }
@@ -82,6 +100,9 @@ struct HomeView: View {
         .task {
             if let uid = sessionManager.currentUser?.id {
                 await RatingService.shared.recomputeAndSaveOwnAverageRating(uid: uid)
+                if isRider {
+                    await RideService.shared.activateDueScheduledRides(forRiderId: uid)
+                }
             }
         }
     }
