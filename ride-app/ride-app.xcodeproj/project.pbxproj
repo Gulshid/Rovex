@@ -39,9 +39,24 @@
 		043AE6EC3027666E00E98EAE /* ride-appUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "ride-appUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		04EEBACF302F365A00DA564E /* Exceptions for "ride-app" folder in "ride-app" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Tests/AuthViewModelValidationTests.swift,
+				Tests/FareEstimatorTests.swift,
+				Tests/RideStatusTransitionTests.swift,
+			);
+			target = 043AE6D43027666D00E98EAE /* ride-app */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		043AE6D73027666D00E98EAE /* ride-app */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				04EEBACF302F365A00DA564E /* Exceptions for "ride-app" folder in "ride-app" target */,
+			);
 			path = "ride-app";
 			sourceTree = "<group>";
 		};

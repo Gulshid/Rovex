@@ -1,0 +1,175 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── USERS ──────────────────────────────────────────────
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+                       && request.auth.uid == userId;
+      allow update: if request.auth != null
+                       && request.auth.uid == userId
+                       // role can't be changed after creation
+                       && request.resource.data.role == resource.data.role;
+      allow delete: if false;
+
+      // NOTE — Phase 10/12 (walletBalance, rating/ratingCount): both are
+      // only ever written by the user onto their OWN doc — a rider
+      // charging themselves via WalletService, a driver recomputing their
+      // own rating via RatingService. See those services' headers for why
+      // that's the only rule-safe write path without a Cloud Function.
+      // Since this rule doesn't special-case those fields, a user could
+      // in theory set their own walletBalance/rating directly too — fine
+      // for a practice app with no real money or stakes involved; don't
+      // copy this pattern anywhere it would matter.
+    }
+
+    // ── RIDES ──────────────────────────────────────────────
+    match /rides/{rideId} {
+
+      function isRider() {
+        return request.auth != null && request.auth.uid == resource.data.riderId;
+      }
+
+      function isAssignedDriver() {
+        return request.auth != null && request.auth.uid == resource.data.driverId;
+      }
+
+      // FIXED — driverId is `String?` in Ride.swift, and Firestore's
+      // Codable encoder OMITS nil optional fields entirely rather than
+      // writing them as null. On a freshly-requested ride, driverId
+      // doesn't exist as a key at all, and referencing a missing map key
+      // throws (not `false`) — an error anywhere in a rule denies the
+      // whole request. Guard the same way tripFieldsUnchanged() guards
+      // the optional trip fields below: check existence before comparing.
+      function isClaimingDriver() {
+        return request.auth != null
+                 && (!('driverId' in resource.data) || resource.data.driverId == null)
+                 && request.auth.uid == request.resource.data.driverId;
+      }
+
+      // Everything that identifies the trip itself — neither the rider
+      // nor the driver should ever be able to change these after
+      // creation, only the status/timestamp/driverId/fare fields that
+      // progress the ride. `in`-guarded so this doesn't throw on rides
+      // written before distanceKm/durationMin/paymentMethod/scheduledFor/
+      // promoCode existed.
+      function tripFieldsUnchanged() {
+        return request.resource.data.riderId == resource.data.riderId
+          && request.resource.data.pickupLocation == resource.data.pickupLocation
+          && request.resource.data.dropoffLocation == resource.data.dropoffLocation
+          && request.resource.data.vehicleType == resource.data.vehicleType
+          && request.resource.data.estimatedFare == resource.data.estimatedFare
+          && (!('distanceKm' in resource.data) || request.resource.data.distanceKm == resource.data.distanceKm)
+          && (!('durationMin' in resource.data) || request.resource.data.durationMin == resource.data.durationMin)
+          && (!('paymentMethod' in resource.data) || request.resource.data.paymentMethod == resource.data.paymentMethod)
+          && (!('scheduledFor' in resource.data) || request.resource.data.scheduledFor == resource.data.scheduledFor)
+          && (!('promoCode' in resource.data) || request.resource.data.promoCode == resource.data.promoCode);
+      }
+
+      allow read: if request.auth != null
+                     && (resource == null
+                         || request.auth.uid == resource.data.riderId
+                         || request.auth.uid == resource.data.driverId
+                         || resource.data.status == 'requested');
+
+      allow create: if request.auth != null
+                       && request.auth.uid == request.resource.data.riderId;
+
+      // Rider: can cancel their own ride at any stage, OR (Phase 14) flip
+      // their own "scheduled" ride to "requested" once its time arrives —
+      // RideService.activateDueScheduledRides runs this client-side (no
+      // Cloud Functions/cron backend here), so it needs to be an allowed
+      // rider self-write, not just a cancellation. Nothing else about the
+      // ride can change through this rule.
+      allow update: if isRider()
+                       && tripFieldsUnchanged()
+                       && request.resource.data.driverId == resource.data.driverId
+                       && (request.resource.data.status == 'cancelled'
+                           || (resource.data.status == 'scheduled' && request.resource.data.status == 'requested'));
+
+      // Driver: claim an unassigned ride (driverId null → themselves), or
+      // progress a ride already assigned to them through
+      // accepted → ongoing → completed, including writing the Phase 10
+      // `fare` receipt on completion. Can't reassign to a different
+      // driver and can't touch trip fields.
+      allow update: if (isAssignedDriver() || isClaimingDriver())
+                       && tripFieldsUnchanged()
+                       && request.resource.data.riderId == resource.data.riderId
+                       && request.resource.data.driverId == request.auth.uid
+                       && request.resource.data.status in ['accepted', 'ongoing', 'completed'];
+
+      allow delete: if false;
+
+      // ── RATINGS (subcollection) ─────────────────────────
+      // Phase 12 — rides/{rideId}/ratings/{ratingId}. Read is permissive
+      // (any signed-in user) since ratings are shown publicly and this
+      // same rule covers the collectionGroup read
+      // RatingService.fetchAverageRating runs across every ride's ratings
+      // at once. Create is restricted to the actual rater.
+      match /ratings/{ratingId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null
+                         && request.auth.uid == request.resource.data.fromUserId;
+        allow update: if false;
+        allow delete: if false;
+      }
+
+      // ── MESSAGES (subcollection) ────────────────────────
+      // Phase 13 — rides/{rideId}/messages/{messageId}. Restricted to the
+      // two participants of THIS ride. `resource`/`request.resource`
+      // inside this nested match refer to the MESSAGE doc, not the ride,
+      // so rideDoc() fetches the parent ride once per evaluation to check
+      // participancy — an extra read per message read/write, acceptable
+      // for a practice app's message volume.
+      match /messages/{messageId} {
+        function rideDoc() {
+          return get(/databases/$(database)/documents/rides/$(rideId)).data;
+        }
+
+        allow read: if request.auth != null
+                       && (request.auth.uid == rideDoc().riderId
+                           || request.auth.uid == rideDoc().driverId);
+
+        allow create: if request.auth != null
+                         && request.auth.uid == request.resource.data.senderId
+                         && (request.auth.uid == rideDoc().riderId
+                             || request.auth.uid == rideDoc().driverId);
+
+        allow update: if false;
+        allow delete: if false;
+      }
+    }
+
+    // ── PROMO CODES ────────────────────────────────────────
+    // Phase 14 — top-level `promoCodes` collection, document ID is the
+    // code itself. Codes are seeded/managed manually via the Firebase
+    // console for this practice app (no admin UI), so create/delete are
+    // always denied from the client. `redemptionCount` is the one field
+    // any signed-in rider needs to bump after using a code
+    // (PromoCodeService.recordRedemption) — the diff/affectedKeys check
+    // below means that's the ONLY field a client update can touch;
+    // isActive/value/expiresAt/maxRedemptions stay console-managed only.
+    match /promoCodes/{code} {
+      allow read: if request.auth != null;
+      allow update: if request.auth != null
+                       && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['redemptionCount']);
+      allow create: if false;
+      allow delete: if false;
+    }
+
+    // ── SOS ALERTS ─────────────────────────────────────────
+    // Phase 14 — SOSService.logAlert's best-effort log entry. Only the
+    // alerting user can create their own alert or read it back; nobody
+    // can modify or delete an alert once logged (it's meant to be an
+    // immutable record, however informal).
+    match /sosAlerts/{alertId} {
+      allow create: if request.auth != null
+                       && request.auth.uid == request.resource.data.userId;
+      allow read: if request.auth != null
+                     && request.auth.uid == resource.data.userId;
+      allow update: if false;
+      allow delete: if false;
+    }
+  }
+}

@@ -92,6 +92,31 @@ struct AddressSearchView: View {
         }
     }
 
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+
+            TextField("Search for an address", text: $viewModel.queryText)
+                .focused($isSearchFocused)
+                .textFieldStyle(.plain)
+                .submitLabel(.search)
+
+            if !viewModel.queryText.isEmpty {
+                Button {
+                    viewModel.queryText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(10)
+        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10))
+        .padding(.horizontal)
+        .padding(.top, 8)
+    }
+
     private var hasFavorites: Bool {
         sessionManager.currentUser?.homeAddress?.isEmpty == false
             || sessionManager.currentUser?.workAddress?.isEmpty == false
