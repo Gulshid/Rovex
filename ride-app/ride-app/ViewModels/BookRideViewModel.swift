@@ -28,6 +28,16 @@
 //  way" / "Ride started" / "Ride completed" alerts work without a Cloud
 //  Functions backend.
 //
+//  UPDATED in Phase 14 — added promo code apply/remove (validated via
+//  PromoCodeService, discount applied to `discountedTotal` and passed as
+//  the ride's actual `estimatedFare`) and `scheduleRide`, an alternate
+//  path to `confirmRide` that writes a "scheduled" ride via
+//  RideService.scheduleRide instead of an immediate "requested" one, and
+//  moves to a new `.scheduledConfirmation` phase rather than starting the
+//  usual live-status listener (a scheduled ride has nothing to observe
+//  yet — it isn't a real request until RideService.activateDueScheduledRides
+//  flips it over at its scheduled time).
+//
 
 import Foundation
 import CoreLocation
@@ -55,6 +65,45 @@ final class BookRideViewModel: ObservableObject {
         FareEstimator.estimate(distanceKm: distanceKm, durationMin: durationMin, vehicleType: selectedVehicleType)
     }
 
+    // MARK: - Phase 14 — Promo code
+
+    @Published var promoCodeInput: String = ""
+    @Published private(set) var appliedPromoCode: PromoCode?
+    @Published private(set) var isApplyingPromoCode = false
+    @Published var promoCodeError: String?
+
+    /// The total actually charged once a valid promo code is applied —
+    /// this, not fareEstimate.total, is what gets sent to
+    /// RideService.requestRide/scheduleRide as `estimatedFare`.
+    var discountedTotal: Double {
+        guard let appliedPromoCode else { return fareEstimate.total }
+        return fareEstimate.total - appliedPromoCode.discountAmount(onTotal: fareEstimate.total)
+    }
+
+    func applyPromoCode() async {
+        promoCodeError = nil
+        isApplyingPromoCode = true
+        defer { isApplyingPromoCode = false }
+        do {
+            appliedPromoCode = try await PromoCodeService.shared.validate(code: promoCodeInput)
+        } catch {
+            appliedPromoCode = nil
+            promoCodeError = error.localizedDescription
+        }
+    }
+
+    func removePromoCode() {
+        appliedPromoCode = nil
+        promoCodeInput = ""
+        promoCodeError = nil
+    }
+
+    // MARK: - Phase 14 — Schedule for later
+
+    @Published var showSchedulePicker = false
+    @Published var scheduledDate: Date = Date().addingTimeInterval(3600)
+    @Published private(set) var isScheduling = false
+
     // MARK: - Ride lifecycle state
 
     enum BookingPhase: Equatable {
@@ -66,6 +115,7 @@ final class BookRideViewModel: ObservableObject {
         case completed
         case cancelled
         case failed(String)
+        case scheduledConfirmation(Date)   // Phase 14 — scheduleRide() succeeded
     }
 
     @Published private(set) var phase: BookingPhase = .idle
@@ -146,13 +196,65 @@ final class BookRideViewModel: ObservableObject {
                 pickup: pickup,
                 dropoff: dropoff,
                 vehicleType: selectedVehicleType,
-                estimatedFare: fareEstimate.total,
+                estimatedFare: discountedTotal,
                 distanceKm: distanceKm,
                 durationMin: durationMin,
-                paymentMethod: selectedPaymentMethod
+                paymentMethod: selectedPaymentMethod,
+                promoCode: appliedPromoCode?.id
             )
             phase = .searching
             observeRide(rideId: rideId)
+            if let code = appliedPromoCode?.id {
+                await PromoCodeService.shared.recordRedemption(code: code)
+            }
+        } catch {
+            phase = .failed(error.localizedDescription)
+        }
+    }
+
+    // MARK: - Phase 14 — Schedule for later
+
+    func scheduleRide() async {
+        guard let uid = Auth.auth().currentUser?.uid else {
+            phase = .failed("You must be signed in to book a ride.")
+            return
+        }
+        guard let pickupCoordinate, let dropoffCoordinate else {
+            phase = .failed("Missing pickup or drop-off location.")
+            return
+        }
+        guard scheduledDate > Date() else {
+            phase = .failed("Pick a time in the future.")
+            return
+        }
+
+        isScheduling = true
+        defer { isScheduling = false }
+
+        let pickup = RideLocation(address: pickupAddress, geoPoint: GeoPoint(
+            latitude: pickupCoordinate.latitude, longitude: pickupCoordinate.longitude
+        ))
+        let dropoff = RideLocation(address: dropoffAddress, geoPoint: GeoPoint(
+            latitude: dropoffCoordinate.latitude, longitude: dropoffCoordinate.longitude
+        ))
+
+        do {
+            try await rideService.scheduleRide(
+                riderId: uid,
+                pickup: pickup,
+                dropoff: dropoff,
+                vehicleType: selectedVehicleType,
+                estimatedFare: discountedTotal,
+                distanceKm: distanceKm,
+                durationMin: durationMin,
+                paymentMethod: selectedPaymentMethod,
+                scheduledFor: scheduledDate,
+                promoCode: appliedPromoCode?.id
+            )
+            if let code = appliedPromoCode?.id {
+                await PromoCodeService.shared.recordRedemption(code: code)
+            }
+            phase = .scheduledConfirmation(scheduledDate)
         } catch {
             phase = .failed(error.localizedDescription)
         }

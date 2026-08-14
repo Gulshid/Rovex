@@ -45,6 +45,17 @@
 //  with a different `field` ("riderId" vs "driverId") since both are
 //  just equality-filtered reads over the same `rides` collection.
 //
+//  UPDATED in Phase 14 — added `scheduleRide` (writes status "scheduled"
+//  instead of "requested", so DriverService's matching query — which
+//  only ever looks at "requested" — leaves it alone until its time
+//  comes), `fetchScheduledRides`, `cancelScheduledRide`, and
+//  `activateDueScheduledRides`. There's no Cloud Functions/cron backend
+//  in this practice app, so activation runs client-side — HomeView calls
+//  it on appear for the signed-in rider, same self-triggered pattern
+//  already used for WalletService/RatingService elsewhere in this
+//  codebase. `requestRide` also gained an optional `promoCode` param so
+//  the code actually gets stored on the ride it was used for.
+//
 //  A NOTE ON INDEXES — the first time each of these runs (once for
 //  riderId+createdAt, once for driverId+createdAt), Firestore will reject
 //  the query with an error that includes a direct link to create the
@@ -95,9 +106,10 @@ final class RideService {
         estimatedFare: Double,
         distanceKm: Double,
         durationMin: Double,
-        paymentMethod: PaymentMethod
+        paymentMethod: PaymentMethod,
+        promoCode: String? = nil
     ) async throws -> String {
-        let ride = Ride(
+        var ride = Ride(
             riderId: riderId,
             driverId: nil,
             pickupLocation: pickup,
@@ -109,6 +121,7 @@ final class RideService {
             durationMin: durationMin,
             paymentMethod: paymentMethod
         )
+        ride.promoCode = promoCode
 
         // Pre-generate the document reference locally (this part is always
         // synchronous/local — it's the write itself we now wait on).
@@ -308,5 +321,94 @@ final class RideService {
         let snapshot = try await query.getDocuments()
         let rides = snapshot.documents.compactMap { try? $0.data(as: Ride.self) }
         return (rides, snapshot.documents.last)
+    }
+
+    // MARK: - Phase 14 — Scheduled rides
+
+    /// Creates a ride with status "scheduled" rather than "requested" —
+    /// see this file's header for why that keeps it invisible to driver
+    /// matching until `activateDueScheduledRides` flips it over.
+    @discardableResult
+    func scheduleRide(
+        riderId: String,
+        pickup: RideLocation,
+        dropoff: RideLocation,
+        vehicleType: VehicleType,
+        estimatedFare: Double,
+        distanceKm: Double,
+        durationMin: Double,
+        paymentMethod: PaymentMethod,
+        scheduledFor: Date,
+        promoCode: String?
+    ) async throws -> String {
+        var ride = Ride(
+            riderId: riderId,
+            driverId: nil,
+            pickupLocation: pickup,
+            dropoffLocation: dropoff,
+            status: .scheduled,
+            vehicleType: vehicleType,
+            estimatedFare: estimatedFare,
+            distanceKm: distanceKm,
+            durationMin: durationMin,
+            paymentMethod: paymentMethod
+        )
+        ride.scheduledFor = Timestamp(date: scheduledFor)
+        ride.promoCode = promoCode
+
+        let docRef = ridesCollection.document()
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            do {
+                try docRef.setData(from: ride) { error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume()
+                    }
+                }
+            } catch {
+                continuation.resume(throwing: error)
+            }
+        }
+        return docRef.documentID
+    }
+
+    /// A rider's upcoming scheduled rides, soonest first. Needs a
+    /// composite index (riderId + status + scheduledFor) — same one-time
+    /// setup as the Phase 12 history queries; Xcode's console prints a
+    /// direct link the first time this runs.
+    func fetchScheduledRides(forRiderId uid: String) async throws -> [Ride] {
+        let snapshot = try await ridesCollection
+            .whereField("riderId", isEqualTo: uid)
+            .whereField("status", isEqualTo: RideStatus.scheduled.rawValue)
+            .order(by: "scheduledFor")
+            .getDocuments()
+        return snapshot.documents.compactMap { try? $0.data(as: Ride.self) }
+    }
+
+    func cancelScheduledRide(rideId: String) async throws {
+        try await ridesCollection.document(rideId).updateData([
+            "status": RideStatus.cancelled.rawValue,
+            "cancelledAt": FieldValue.serverTimestamp()
+        ])
+    }
+
+    /// Flips any of this rider's scheduled rides whose time has arrived
+    /// over to "requested" so DriverService's matching query picks them
+    /// up. Best-effort and silent on failure — called opportunistically
+    /// from HomeView.onAppear, not on any guaranteed schedule, since
+    /// there's no server-side cron in this practice app.
+    func activateDueScheduledRides(forRiderId uid: String) async {
+        guard let scheduled = try? await fetchScheduledRides(forRiderId: uid) else { return }
+        let due = scheduled.filter { ride in
+            guard let scheduledFor = ride.scheduledFor?.dateValue() else { return false }
+            return scheduledFor <= Date()
+        }
+        for ride in due {
+            guard let id = ride.id else { continue }
+            try? await ridesCollection.document(id).updateData([
+                "status": RideStatus.requested.rawValue
+            ])
+        }
     }
 }
