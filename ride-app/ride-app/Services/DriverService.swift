@@ -75,6 +75,10 @@ final class DriverService {
                     for try await rides in stream {
                         let nearby = rides
                             .filter {
+                                // Skip rides that have already been claimed
+                                // by another driver (status may lag the
+                                // driverId field by one snapshot cycle).
+                                $0.driverId == nil &&
                                 GeoUtils.distanceKm(driverLocation, $0.pickupLocation.geoPoint.clCoordinate)
                                     <= Constants.Matching.searchRadiusKm
                             }

@@ -196,8 +196,15 @@ final class RideService {
     /// DriverService.nearbyRequestedRides.
     func observeRequestedRides() -> AsyncThrowingStream<[Ride], Error> {
         AsyncThrowingStream { continuation in
+            // Only pick up rides created within the last 5 minutes —
+            // stale "requested" documents left over from previous sessions
+            // or abandoned bookings would otherwise surface instantly on
+            // every driver who comes online, even before a rider taps
+            // "Book a Ride".
+            let cutoff = Date().addingTimeInterval(-5 * 60)
             let listener = ridesCollection
                 .whereField("status", isEqualTo: RideStatus.requested.rawValue)
+                .whereField("createdAt", isGreaterThanOrEqualTo: cutoff)
                 .addSnapshotListener { snapshot, error in
                     if let error {
                         continuation.finish(throwing: error)
