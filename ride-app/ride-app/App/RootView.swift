@@ -21,6 +21,13 @@
 //     up, which caused HomeView to become the root underneath while the
 //     user kept looking at SignUpView until they tapped back.
 //
+//  UPDATED — Firebase resolves `isLoadingAuthState` almost instantly
+//  (especially with a cached session), which made the splash screen flash
+//  by before its entrance animation could play. `minimumSplashElapsed`
+//  enforces a floor on how long the splash stays up, independent of how
+//  fast auth actually resolves — the splash now shows until BOTH auth has
+//  resolved AND the minimum time has passed, whichever is later.
+//
 
 import SwiftUI
 
@@ -30,10 +37,21 @@ struct RootView: View {
     @EnvironmentObject var router: Router
     @EnvironmentObject var pushService: PushNotificationService
 
+    @State private var minimumSplashElapsed = false
+    private let minimumSplashDuration: Duration = .seconds(2.00)   // 👈 change this number
+
+    private var showSplash: Bool {
+        sessionManager.isLoadingAuthState || !minimumSplashElapsed
+    }
+
     var body: some View {
         Group {
-            if sessionManager.isLoadingAuthState {
+            if showSplash {
                 SplashView()
+                    .task {
+                        try? await Task.sleep(for: minimumSplashDuration)
+                        minimumSplashElapsed = true
+                    }
             } else if sessionManager.isLoggedIn {
                 NavigationStack(path: $router.path) {
                     HomeView()
@@ -57,6 +75,7 @@ struct RootView: View {
             }
         }
         .animation(.default, value: sessionManager.isLoggedIn)
+        .animation(.default, value: minimumSplashElapsed)
         .onChange(of: sessionManager.isLoggedIn) { _, _ in
             router.popToRoot()
         }
