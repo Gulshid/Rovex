@@ -13,6 +13,12 @@
 //  the users collection, plus Phase 14 groundwork fields. No existing
 //  field was renamed or removed, so old documents keep decoding fine.
 //
+//  UPDATED in Phase 14 — homeAddress/workAddress (already reserved since
+//  Phase 4) are now actually wired up via FavoriteLocationsView. Added
+//  emergencyContactName/emergencyContactPhone for the SOS button to read
+//  from (optional — SOSButton's share sheet works fine without one set,
+//  the person just has to pick a recipient manually in the share sheet).
+//
 
 import Foundation
 import FirebaseFirestore
@@ -48,15 +54,21 @@ struct AppUser: Codable, Identifiable, Equatable {
     var rating: Double?
     var ratingCount: Int?
 
-    // Phase 14 groundwork — favorites, wallet, push notifications
+    // Phase 14 — favorites, wallet, push notifications, emergency contact
     var homeAddress: String?
+    var homeAddressGeoPoint: GeoPoint?
     var workAddress: String?
+    var workAddressGeoPoint: GeoPoint?
     var walletBalance: Double?
     var fcmToken: String?
+    var emergencyContactName: String?
+    var emergencyContactPhone: String?
 
     enum CodingKeys: String, CodingKey {
         case id, name, email, role, phone, photoURL, isAvailable, vehicle, createdAt
         case currentLocation, rating, ratingCount
-        case homeAddress, workAddress, walletBalance, fcmToken
+        case homeAddress, homeAddressGeoPoint, workAddress, workAddressGeoPoint
+        case walletBalance, fcmToken
+        case emergencyContactName, emergencyContactPhone
     }
 }
